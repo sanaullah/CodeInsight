@@ -37,6 +37,7 @@ def get_langfuse_client():
                 logger.debug("Langfuse is disabled in config.yaml")
                 return None
             
+            # Check if credentials are provided
             # Check if credentials are provided (check config first, then env vars)
             public_key = langfuse_config.public_key or os.environ.get("LANGFUSE_PUBLIC_KEY")
             secret_key = langfuse_config.secret_key or os.environ.get("LANGFUSE_SECRET_KEY")

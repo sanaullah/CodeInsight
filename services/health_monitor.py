@@ -1,5 +1,5 @@
 """
-Centralized Health Monitor for CodeInsight v3.
+Centralized Health Monitor for CodeInsight.
 
 Manages health checks for all services and provides unified health status reporting.
 """

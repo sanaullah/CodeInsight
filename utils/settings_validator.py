@@ -1,5 +1,5 @@
 """
-Settings validation for CodeInsight v3.
+Settings validation for CodeInsight.
 """
 
 import logging

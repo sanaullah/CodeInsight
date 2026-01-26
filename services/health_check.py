@@ -1,5 +1,5 @@
 """
-Unified Health Check System for CodeInsight v3.
+Unified Health Check System for CodeInsight.
 
 Provides base classes and enums for consistent health checking across all services.
 """
