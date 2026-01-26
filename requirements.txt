@@ -1,0 +1,27 @@
+litellm>=1.81.0
+langfuse>=3.12.0
+pydantic>=2.0.0
+pyyaml>=6.0
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+langgraph>=0.2.0
+langchain-core>=0.3.0
+langchain>=0.3.0
+langchain-community>=0.3.0
+# MCP (Model Context Protocol) for filesystem access
+# mcp>=0.1.0
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-exporter-otlp>=1.20.0
+# UI framework
+streamlit>=1.40.0
+# Database clients
+psycopg2-binary>=2.9.0
+# Infrastructure service clients (services run via Langfuse Docker Compose)
+redis>=5.0.0
+clickhouse-driver>=0.2.0
+boto3>=1.28.0
+# Token counting for chunking
+tiktoken>=0.5.0
+# Environment variable management
+python-dotenv>=1.0.0

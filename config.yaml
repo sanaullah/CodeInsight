@@ -1,0 +1,398 @@
+# LLM Directory Configuration
+
+# Request Configuration
+timeout: 30.0  # Request timeout in seconds
+max_retries: 3  # Maximum number of retries
+
+# Retry Configuration
+retry_config:
+  max_attempts: 3  # Maximum retry attempts
+  base_delay: 1.0  # Base delay between retries (seconds)
+  max_delay: 60.0  # Maximum delay between retries (seconds)
+  exponential_base: 2.0  # Exponential backoff base
+  jitter: true  # Add random jitter to prevent thundering herd
+
+# Rate Limiting Configuration
+rate_limit_config:
+  requests_per_minute: 600  # Maximum requests per minute
+  tokens_per_minute: 150000  # Maximum tokens per minute
+  burst_size: 10  # Burst capacity
+
+# Advanced Configuration
+fetch_models_on_init: false  # Fetch available models on initialization
+
+# Model Configuration
+# Define available models with their capabilities
+models:
+  # Qwen Models
+  Qwen/Qwen3-235B-A22B-Instruct-2507:
+    description: Qwen 3 235b A22B Instruct 2507 the updated version of Qwen3 235B
+      A22B, with significant improvements in performance. This model is non-thinking.
+    input_price_per_1m: 0.13
+    max_input_tokens: 256000
+    max_output_tokens: 64000
+    name: Qwen/Qwen3-235B-A22B-Instruct-2507
+    output_price_per_1m: 0.5
+
+  Qwen/Qwen3-235B-A22B-Thinking-2507:
+    description: The thinking version of Qwen 3 235b A22B 2507, with enhanced reasoning
+      capabilities and step-by-step problem solving.
+    input_price_per_1m: 0.3
+    max_input_tokens: 256000
+    max_output_tokens: 64000
+    name: Qwen/Qwen3-235B-A22B-Thinking-2507
+    output_price_per_1m: 0.5
+
+  Qwen/Qwen3-Next-80B-A3B-Instruct:
+    description: Based on the new Qwen3-Next architecture (hybrid attention, highly
+      sparse MoE, training-stability optimizations, and multi-token prediction), the
+      Qwen3-Next-80B-A3B-Instruct model delivers extreme efficiency with only 3B active
+      parameters per pass. It performs comparably to Qwen3-235B-A22B-Instruct-2507
+      and shows clear advantages on ultra-long context tasks (up to 256K tokens).
+    input_price_per_1m: 0.15
+    max_input_tokens: 256000
+    max_output_tokens: 64000
+    name: Qwen/Qwen3-Next-80B-A3B-Instruct
+    output_price_per_1m: 0.65
+
+  # DeepSeek Models
+  deepseek-ai/deepseek-v3.2-exp:
+    description: DeepSeek V3.2 Exp, DeepSeek's latest model offering far better performance
+      especially on longer contexts than its predecessors. Current flagship model
+      by DeepSeek. FP8.
+    input_price_per_1m: 0.28
+    max_input_tokens: 163800
+    max_output_tokens: 40960
+    name: deepseek-ai/deepseek-v3.2-exp
+    output_price_per_1m: 0.42
+
+  deepseek-ai/deepseek-v3.2-exp-thinking:
+    description: DeepSeek V3.2 Exp Thinking, DeepSeek's latest model offering far
+      better performance especially on longer contexts than its predecessors. Current
+      flagship model by DeepSeek. FP8.
+    input_price_per_1m: 0.28
+    max_input_tokens: 163800
+    max_output_tokens: 40960
+    name: deepseek-ai/deepseek-v3.2-exp-thinking
+    output_price_per_1m: 0.42
+
+  # Minimax Models
+  minimax/minimax-m2.1:
+    description: MiniMax M2.1 builds on M2 with enhanced context understanding and
+      improved complex tool use. 230B parameter MoE model (10B active) optimized for
+      agentic workflows and long-horizon tasks. FP8.
+    input_price_per_1m: 0.33
+    max_input_tokens: 200000
+    max_output_tokens: 50000
+    name: minimax/minimax-m2.1
+    output_price_per_1m: 1.32
+
+  # Kimi Models
+  moonshotai/Kimi-K2-Instruct-0905:
+    description: Kimi K2 0905. Kimi-k2 is a Mixture-of-Experts (MoE) foundation model
+      with exceptional coding and agent capabilities, featuring 1 trillion total parameters
+      and 32 billion activated parameters. In benchmark evaluations covering general
+      knowledge reasoning, programming, mathematics, and agent-related tasks, the
+      K2 model outperforms other leading open-source models. Quantized at FP8.
+    input_price_per_1m: 0.4
+    max_input_tokens: 256000
+    max_output_tokens: 64000
+    name: moonshotai/Kimi-K2-Instruct-0905
+    output_price_per_1m: 2.0
+
+  moonshotai/kimi-k2-thinking:
+    description: Kimi K2 0905. Kimi-k2 is a Mixture-of-Experts (MoE) foundation model
+      with exceptional coding and agent capabilities, featuring 1 trillion total parameters
+      and 32 billion activated parameters. In benchmark evaluations covering general
+      knowledge reasoning, programming, mathematics, and agent-related tasks, the
+      K2 model outperforms other leading open-source models. Quantized at FP8.
+    input_price_per_1m: 0.4
+    max_input_tokens: 256000
+    max_output_tokens: 64000
+    name: moonshotai/Kimi-K2-Instruct-0905
+    output_price_per_1m: 2.0
+    
+  # Qwen Coder Models
+  qwen/qwen3-coder:
+    description: Qwen 3 Coder 480B, a 480 billion total parameter model with 35B active,
+      and 160 total experts with 8 active. Performs similar to Claude 4 Sonnet in
+      coding benchmarks, but does so at a much lower price.
+    input_price_per_1m: 0.13
+    max_input_tokens: 262000
+    max_output_tokens: 65500
+    name: qwen/qwen3-coder
+    output_price_per_1m: 0.5
+
+  qwen3-30b-a3b-instruct-2507:
+    description: Qwen3-30B-A3B-Instruct-2507 is a 30.5B-parameter mixture-of-experts
+      language model from Qwen, with 3.3B active parameters per inference. Significant
+      improvements in general capabilities, including instruction following, logical
+      reasoning, text comprehension, mathematics, science, coding and tool usage.
+    input_price_per_1m: 0.2
+    max_input_tokens: 256000
+    max_output_tokens: 64000
+    name: qwen3-30b-a3b-instruct-2507
+    output_price_per_1m: 0.5
+
+  # GLM Models
+  z-ai/glm-4.6:
+    description: Latest GLM series chat model with strong general performance. Quantized
+      at FP8
+    input_price_per_1m: 0.6
+    max_input_tokens: 200000
+    max_output_tokens: 50000
+    name: z-ai/glm-4.6
+    output_price_per_1m: 1.7
+
+  z-ai/glm-4.6:thinking:
+    description: Thinking version of the latest GLM series chat model with strong
+      general performance. Quantized at FP8
+    input_price_per_1m: 0.6
+    max_input_tokens: 200000
+    max_output_tokens: 50000
+    name: z-ai/glm-4.6:thinking
+    output_price_per_1m: 1.7
+
+# Chutes Models
+  zai-org/GLM-4.7-TEE:
+    description: Latest GLM series chat model with strong general performance. Quantized
+      at FP8
+    input_price_per_1m: 0.6
+    max_input_tokens: 200000
+    max_output_tokens: 50000
+    name: zai-org/GLM-4.7-TEE
+    output_price_per_1m: 1.7
+
+  deepseek-ai/DeepSeek-V3.2-Speciale-TEE:
+    description: DeepSeek V3.2 Exp Thinking, DeepSeek's latest model offering far
+      better performance especially on longer contexts than its predecessors. Current
+      flagship model by DeepSeek. FP8.
+    input_price_per_1m: 0.28
+    max_input_tokens: 163800
+    max_output_tokens: 40960
+    name: deepseek-ai/DeepSeek-V3.2-Speciale-TEE
+    output_price_per_1m: 0.42
+
+  openai/gpt-oss-120b-TEE:
+    description: DeepSeek V3.2 Exp Thinking, DeepSeek's latest model offering far
+      better performance especially on longer contexts than its predecessors. Current
+      flagship model by DeepSeek. FP8.
+    input_price_per_1m: 0.28
+    max_input_tokens: 131000
+    max_output_tokens: 40960
+    name: openai/gpt-oss-120b-TEE
+    output_price_per_1m: 0.42
+
+  moonshotai/Kimi-K2-Thinking-TEE:
+    description: DeepSeek V3.2 Exp Thinking, DeepSeek's latest model offering far
+      better performance especially on longer contexts than its predecessors. Current
+      flagship model by DeepSeek. FP8.
+    input_price_per_1m: 0.28
+    max_input_tokens: 131000
+    max_output_tokens: 40960
+    name: moonshotai/Kimi-K2-Thinking-TEE
+    output_price_per_1m: 0.42
+
+  nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16:
+    description: Latest GLM series chat model with strong general performance. Quantized
+      at FP8
+    input_price_per_1m: 0.6
+    max_input_tokens: 256000
+    max_output_tokens: 64000
+    name: nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16
+    output_price_per_1m: 0.6
+
+# Langfuse Observability Configuration (optional)
+langfuse:
+  enabled: true  # Enable/disable Langfuse tracking
+  # public_key: pk-lf-...  # Set LANGFUSE_PUBLIC_KEY in .env
+  # secret_key: sk-lf-...  # Set LANGFUSE_SECRET_KEY in .env
+  # host: http://localhost:3000  # Set LANGFUSE_HOST in .env
+  timeout: 5.0  # Request timeout
+  enabled_for_litellm: true  # Enable LiteLLM auto-tracking
+  enabled_for_langchain: true  # Enable LangChain callback tracking
+  enabled_for_custom_client: true  # Enable custom client tracking
+  default_tags: []  # Default tags for traces
+  prompt_tracking:  # Prompt tracking configuration (optional)
+    enabled: true  # Enable/disable prompt tracking in Langfuse (default: false to avoid breaking observability)
+    store_in_langfuse: true  # Store prompts in Langfuse (requires enabled: true)
+    store_in_postgresql: true  # Store prompts in PostgreSQL (always enabled as fallback)
+  cost_tracking:  # Cost tracking configuration (optional)
+    enabled: true  # Enable/disable cost aggregation and tracking
+    # Model pricing is automatically read from models section above
+    # Optional: override pricing here if needed
+    # model_pricing:
+    #   "qwen/qwen3-coder": 0.0001  # per 1K tokens (example)
+  docker:  # Docker Compose service management
+    compose_file: langfuse/docker-compose.yml  # Path to docker-compose.yml file
+    services: []  # Optional: specific services to manage (empty = all services)
+
+# Workflows Configuration (optional)
+# This section configures LangGraph workflow behavior (checkpoints, streaming, etc.)
+# For LangGraph workflow LOGGING, see the "Logging Configuration" section below
+workflows:
+  enabled: true  # Enable/disable workflows support
+  checkpoint:  # Checkpoint persistence settings
+    enabled: false  # Enable checkpoint persistence
+    type: memory  # "memory" (in-memory) or "sqlite" (file-based)
+    path: checkpoints.db  # Path for SQLite checkpoints (only used if type is "sqlite")
+  human_in_loop:  # Human-in-the-loop settings
+    enabled: false  # Enable human-in-the-loop nodes
+    timeout: 300.0  # Timeout in seconds for human approval
+    approval_required: true  # Require explicit approval (vs auto-approve)
+    default_action: reject  # Default action if timeout: "approve" or "reject"
+  streaming:  # Streaming settings
+    enabled: false  # Enable streaming for graph execution
+    stream_mode: values  # "values" (final state), "updates" (state updates), or "debug" (all events)
+    include_events: true  # Include event details in stream
+  swarm_analysis:  # Swarm Analysis configuration
+    enable_tool_calling: true  # Enable tool calling for agents (default: true)
+    enable_static_dependency_resolution: true  # Enable static dependency resolution (default: true)
+    max_tool_calls_per_agent: 10  # Maximum tool calls per agent (default: 10)
+
+# Role Validation Configuration
+role_validation:
+  # Safe phrases that contain suspicious words but are legitimate
+  # These phrases will always be allowed even if they contain words like "command", "execute", etc.
+  safe_phrases:
+    - command pattern
+    - command pattern validator
+    - execution pattern
+    - execution context
+    - execution flow
+    - execution path
+    - execution model
+    - execution environment
+    - system architecture
+    - system design
+    - system analyst
+    - system reviewer
+    - architecture pattern
+    - design pattern
+    - pattern validator
+    - pattern analyzer
+    - tool execution
+    - code execution
+    - shell script
+    - shell integration
+    - root cause
+    - root analysis
+    - admin panel
+    - admin interface
+    - admin dashboard
+
+  # Dangerous patterns that should always be rejected (regex patterns)
+  # These are context-independent security risks
+  dangerous_patterns:
+    - (?i)\b(delete|drop|truncate|remove)\s+(all|everything|data|database|table|file|system)\b
+    - (?i)\b(execute|exec|eval)\s+(arbitrary|system|shell|command|code)\b
+    - (?i)\b(sudo|root)\s+(access|privilege|permission|execute)\b
+    - (?i)\b(grant|revoke)\s+(all|admin|root|sudo)\b
+    - (?i)\b(alter|update|insert)\s+(system|database|config|security)\b
+    - (?i)^(admin|root|sudo|system|shell|command|execute|delete|drop|truncate|remove|alter|update|insert|grant|revoke|eval|exec)\s*$
+
+  # Character normalization map (special chars -> safe replacements)
+  char_normalization:
+    '!': exclamation
+    '#': hash
+    $: dollar
+    '%': percent
+    '&': and
+    (: left_paren
+    ): right_paren
+    '*': star
+    +: plus
+    /: slash
+    <: less
+    '=': equals
+    '>': greater
+    '?': question
+    '@': at
+    '[': left_bracket
+    \: backslash
+    ']': right_bracket
+    ^: caret
+    '{': left_brace
+    '|': pipe
+    '}': right_brace
+    '~': tilde
+
+  # Allowed character pattern (regex)
+  # Expanded from original to allow common punctuation
+  allowed_char_pattern: ^[a-zA-Z0-9\s\-_&()]+$
+
+  # Maximum role name length
+  max_role_name_length: 100
+
+# Prompt Validation Configuration
+prompt_validation:
+  # Minimum validity score threshold (0.0-1.0)
+  # Prompts with overall_score >= this value are considered valid
+  min_validity_score: 0.7
+  
+  # High confidence threshold (0.0-1.0)
+  # Prompts with overall_score >= this value are considered high confidence
+  high_confidence_threshold: 0.9
+
+# Database Configuration (CodeLumen)
+# All database services can be configured via environment variables or this config file
+# Environment variables take precedence over config file values
+database:
+  postgresql:
+    host: localhost  # PostgreSQL host (POSTGRES_HOST)
+    port: 5432  # PostgreSQL port (POSTGRES_PORT)
+    user: postgres  # PostgreSQL user (POSTGRES_USER)
+    password: postgres  # PostgreSQL password (POSTGRES_PASSWORD) - CHANGE IN PRODUCTION
+    database: codelumen  # Database name (POSTGRES_DB)
+    schema: codelumen  # Main schema name (POSTGRES_SCHEMA)
+    cache_schema: codelumen_cache  # Cache schema name (POSTGRES_CACHE_SCHEMA)
+
+  redis:
+    host: localhost  # Redis host (REDIS_HOST)
+    port: 6379  # Redis port (REDIS_PORT)
+    password: myredissecret  # Redis password (REDIS_AUTH or REDIS_PASSWORD) - CHANGE IN PRODUCTION
+    db: 1  # Redis database number 0-15 (REDIS_DB) - Use DB 1 for CodeLumen (separate from Langfuse)
+    key_prefix: 'codelumen:'  # Key prefix for all CodeLumen keys (REDIS_KEY_PREFIX)
+    socket_timeout: 5  # Socket timeout in seconds (REDIS_SOCKET_TIMEOUT)
+    socket_connect_timeout: 5  # Connection timeout in seconds (REDIS_SOCKET_CONNECT_TIMEOUT)
+    health_check_interval: 30  # Health check interval in seconds (REDIS_HEALTH_CHECK_INTERVAL)
+
+  clickhouse:
+    host: localhost  # ClickHouse host (CLICKHOUSE_HOST)
+    http_port: 8123  # ClickHouse HTTP port (CLICKHOUSE_HTTP_PORT)
+    native_port: 9000  # ClickHouse native port (CLICKHOUSE_NATIVE_PORT)
+    user: clickhouse  # ClickHouse user (CLICKHOUSE_USER)
+    password: clickhouse  # ClickHouse password (CLICKHOUSE_PASSWORD) - CHANGE IN PRODUCTION
+    database: codelumen_analytics  # Database name (CLICKHOUSE_DB)
+    secure: false  # Use secure (HTTPS) connection (CLICKHOUSE_SECURE)
+    verify: true  # Verify SSL certificates (CLICKHOUSE_VERIFY)
+    timeout: 30  # Request timeout in seconds (CLICKHOUSE_TIMEOUT)
+
+  minio:
+    endpoint: localhost:9090  # MinIO endpoint host:port (MINIO_ENDPOINT)
+    access_key: minio  # MinIO access key (MINIO_ACCESS_KEY or MINIO_ROOT_USER)
+    secret_key: miniosecret  # MinIO secret key (MINIO_SECRET_KEY or MINIO_ROOT_PASSWORD) - CHANGE IN PRODUCTION
+    bucket: codelumen  # Default bucket name (MINIO_BUCKET)
+    region: us-east-1  # S3 region (MINIO_REGION)
+    secure: false  # Use secure (HTTPS) connection (MINIO_SECURE)
+    force_path_style: true  # Force path-style addressing (MINIO_FORCE_PATH_STYLE)
+
+# Logging Configuration
+logging:
+  enabled: true  # Enable/disable logging
+  log_dir: logs  # Directory for log files
+  log_level: INFO  # DEBUG, INFO, WARNING, ERROR, CRITICAL
+  enable_file_logging: true  # Enable file logging
+  enable_console_logging: true  # Enable console logging
+  use_json_format: false  # JSON for files (false = readable format)
+  date_based_files: true  # app_YYYY-MM-DD.log vs app.log
+  rotation:  # Log rotation settings
+    max_bytes: 10485760  # 10MB (default 5MB in CodeLumen v2)
+    backup_count: 5  # Number of backup files to keep per day
+    retention_days: 30  # Keep logs for 30 days (old files will be automatically deleted)
+    enable_time_rotation: true  # Enable daily rotation at midnight (works with date_based_files)
+  module_loggers:  # Module-specific loggers
+    enabled: true  # Enable module-specific loggers
+    modules:  # Separate logs for these modules
+      - langfuse  # Langfuse integration logs (logs/langfuse/)
+      - workflows  # LangGraph workflow execution logs (logs/workflows/)
