@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CodeInsight v3 Setup Script
+CodeInsight Setup Script
 Creates a virtual environment and installs dependencies
 Cross-platform: Works on Windows, Linux, and macOS
 """
@@ -199,7 +199,7 @@ def init_database(venv_path: Path) -> bool:
 def main() -> int:
     """Main setup function."""
     print_colored("========================================", Colors.CYAN)
-    print_colored("CodeInsight v3 Setup", Colors.CYAN)
+    print_colored("CodeInsight Setup", Colors.CYAN)
     print_colored("========================================", Colors.CYAN)
     print()
     

@@ -1,8 +1,8 @@
-# CodeInsight v3 Setup Script
+# CodeInsight Setup Script
 # Creates a virtual environment and installs dependencies
 
 Write-Host "========================================" -ForegroundColor Cyan
-Write-Host "CodeInsight v3 Setup" -ForegroundColor Cyan
+Write-Host "CodeInsight Setup" -ForegroundColor Cyan
 Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
