@@ -4,7 +4,7 @@
 
 # CodeInsight
 
-CodeInsight acts as an always-on, intelligent sidekick designed to run alongside your development workflow. As you build applications using tools like Cursor, CodeInsight offering a proactive "second pair of eyes" to identify and help resolve issues that aren't immediately apparent during the coding phase.
+CodeInsight acts as an intelligent sidekick designed to run alongside your development workflow. As you build applications using tools like Cursor, CodeInsight offering a proactive "second pair of eyes" to identify and help resolve issues that aren't immediately apparent during the coding phase.
 
 By orchestrating a swarm of specialized AI agents, the platform looks beyond the surface of your code to uncover hidden complexities. It empowers you to build with greater confidence by automatically detecting security risks, performance bottlenecks, and architectural inconsistencies in real-time—allowing you to fix problems as they arise, rather than waiting for them to surface later.
 
