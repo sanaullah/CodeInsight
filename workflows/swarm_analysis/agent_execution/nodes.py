@@ -116,10 +116,10 @@ async def _execute_with_tool_calling(
     current_messages = llm_state["messages"].copy()
 
     # Initialize file cache and tool call history in state if not present
-    if "_file_cache" not in state:
-        state["_file_cache"] = {}
-    if "_tool_calls_history" not in state:
-        state["_tool_calls_history"] = []
+    if StateKeys.FILE_CACHE not in state:
+        state[StateKeys.FILE_CACHE] = {}
+    if StateKeys.TOOL_CALLS_HISTORY not in state:
+        state[StateKeys.TOOL_CALLS_HISTORY] = []
 
     # MCP filesystem server support removed (archived feature)
     use_mcp = False
@@ -328,7 +328,7 @@ async def _execute_with_tool_calling(
                 "via_mcp": mcp_client is not None and not use_embedded_tools,
             }
             tool_calls_history.append(tool_call_record)
-            state["_tool_calls_history"].append(tool_call_record)
+            state[StateKeys.TOOL_CALLS_HISTORY].append(tool_call_record)
 
             # Add tool result to messages
             # Format: ToolMessage with tool_call_id
@@ -551,10 +551,176 @@ def dispatch_agents_node(state: SwarmAnalysisState) -> SwarmAnalysisState:
 
 def _enrich_result_with_tool_metadata(agent_result: Dict[str, Any], state: SwarmAnalysisState) -> None:
     """Helper to add tool calling metadata and file cache utilization to agent result."""
-    if "_tool_calls_history" in state and state["_tool_calls_history"]:
-        agent_result["tool_calls_made"] = len(state["_tool_calls_history"])
-    if "_file_cache" in state and state["_file_cache"]:
-        agent_result["files_requested"] = len(state["_file_cache"])
+    if StateKeys.TOOL_CALLS_HISTORY in state and state[StateKeys.TOOL_CALLS_HISTORY]:
+        agent_result["tool_calls_made"] = len(state[StateKeys.TOOL_CALLS_HISTORY])
+    if StateKeys.FILE_CACHE in state and state[StateKeys.FILE_CACHE]:
+        agent_result["files_requested"] = len(state[StateKeys.FILE_CACHE])
+
+
+async def _analyze_chunk(
+    chunk_content: str,
+    chunk_num: int,
+    total_chunks: int,
+    role_name: str,
+    prompt: str,
+    architecture_model: Any,
+    architecture_hash: str,
+    langfuse_prompt_id: Optional[str],
+    model_name: str,
+    project_path: str,
+    state: Dict[str, Any],
+    config: Optional[Dict[str, Any]],
+    stream_callback: Optional[Any] = None,
+    primary_file: str = "multiple files",
+    analysis_mode: str = "chunked",
+) -> Dict[str, Any]:
+    """
+    Analyzes a single chunk of code using the specified agent role and model.
+
+    This helper function centralizes the repetitive logic required for chunk processing:
+    1. Emits lifecycle events (chunk_start/chunk_complete) to the stream callback.
+    2. Validates the chunk content for syntax and sanity.
+    3. Checks for tool-calling support on the target model.
+    4. Constructs the final user message and system prompt.
+    5. Executes the LLM call, handling tool-calling loops if enabled.
+    6. Extracts the Langfuse trace ID and analysis response.
+
+    Args:
+        chunk_content: The actual code content/context to be analyzed.
+        chunk_num: Current chunk index (1-based) for logging and UI.
+        total_chunks: Total number of chunks in the workload.
+        role_name: The name of the agent role (e.g., "Performance Engineer").
+        prompt: The role-specific prompt instructions.
+        architecture_model: The project's architecture model for context.
+        architecture_hash: Hash of the architecture model for prompt resolution.
+        langfuse_prompt_id: ID of the Langfuse prompt being used.
+        model_name: Name of the LLM model to invoke.
+        project_path: Root path of the project.
+        state: The current workflow state dictionary.
+        config: Optional LangGraph configuration.
+        stream_callback: Optional callback for real-time event streaming.
+        primary_file: Filename to display in the UI for this chunk.
+        analysis_mode: Either "direct" (single-pass) or "chunked".
+
+    Returns:
+        A dictionary containing:
+        - "analysis_text": The raw analysis report from the LLM.
+        - "trace_id": The Langfuse trace ID for observability.
+        - "llm_result": The full result object from the LLM invocation.
+    """
+    # 1. Notify UI/Streams that the agent has started working on this specific chunk
+    if stream_callback:
+        stream_callback(
+            "agent_chunk_start",
+            {
+                "agent": role_name,
+                "agent_id": f"agent_{role_name.lower().replace(' ', '_')}",
+                "chunk_index": chunk_num,
+                "total_chunks": total_chunks,
+                "file": primary_file,
+                "status": "processing",
+            },
+        )
+
+    # 2. Safety Check: Validate chunk content to catch empty/corrupt data early
+    metrics = validate_chunk_content(chunk_content, chunk_num, total_chunks, role_name)
+    logger.debug(f"Chunk metrics for {role_name} (Mode: {analysis_mode}): {metrics}")
+
+    # 3. Dynamic Configuration: Resolve tool settings and model capabilities
+    enable_tool_calling = state.get(StateKeys.ENABLE_TOOL_CALLING, True)
+    max_tool_calls = state.get(StateKeys.MAX_TOOL_CALLS, 10)
+    max_iterations = state.get(StateKeys.MAX_ITERATIONS, 15)
+    max_duplicate_iterations = state.get(StateKeys.MAX_DUPLICATE_ITERATIONS, 3)
+    llm_call_timeout = state.get(StateKeys.LLM_CALL_TIMEOUT, 60.0)
+    tools_available = False
+    tools = None
+
+    # Check if the model supports tool-calling (e.g., OpenAI, Anthropic, some Gemini models)
+    if enable_tool_calling:
+        tools_available = check_tool_calling_support(model_name)
+        if tools_available:
+            tools = get_tool_definitions()
+            logger.debug(f"Tool calling enabled for chunk analysis ({role_name})")
+
+    # 4. Message Construction: Combine system instructions with user requirements
+    user_message = build_chunk_analysis_message(
+        chunk_content=chunk_content,
+        chunk_num=chunk_num,
+        total_chunks=total_chunks,
+        prompt=prompt,
+        architecture_model=architecture_model,
+        tools_available=tools_available,
+    )
+
+    # Prepare the payload for the LLM node
+    llm_state = {
+        "messages": [
+            {
+                "role": "system",
+                "content": build_agent_system_prompt(
+                    role_name, architecture_hash, architecture_model
+                ),
+            },
+            {"role": "user", "content": user_message},
+        ],
+        "model": model_name,
+        "temperature": 0.7,
+        "metadata": {
+            "role": role_name,
+            "chunk_num": chunk_num,
+            "total_chunks": total_chunks,
+            "langfuse_prompt_id": langfuse_prompt_id,
+            "analysis_mode": analysis_mode,
+        },
+    }
+
+    # Inject tool definitions if supported and enabled
+    if tools_available and tools:
+        llm_state["tools"] = tools
+        llm_state["tool_choice"] = "auto"
+
+    # 5. Execution: Dispatch the LLM call
+    # If tools are available, we use the tool-calling executor which handles the loop
+    if tools_available and tools:
+        llm_result = await _execute_with_tool_calling(
+            llm_state=llm_state,
+            project_path=project_path,
+            state=state,
+            config=config,
+            max_tool_calls=max_tool_calls,
+            max_iterations=max_iterations,
+            max_duplicate_iterations=max_duplicate_iterations,
+            llm_call_timeout=llm_call_timeout,
+        )
+    else:
+        # Standard stateless LLM call
+        llm_result = await llm_node(llm_state, config=config)
+
+    # 6. Post-processing: Extract content and trace information
+    analysis_text = llm_result.get("last_response", "")
+    metadata = llm_result.get("metadata", {})
+    captured_trace_id = metadata.get("langfuse_trace_id") if isinstance(metadata, dict) else None
+
+    # Notify UI/Streams that this chunk is done
+    if stream_callback:
+        stream_callback(
+            "agent_chunk_complete",
+            {
+                "agent": role_name,
+                "agent_id": f"agent_{role_name.lower().replace(' ', '_')}",
+                "chunk_index": chunk_num,
+                "total_chunks": total_chunks,
+                "file": primary_file,
+                "findings": 0, # Note: Current implementation uses raw response; extraction happens later
+                "status": "completed",
+            },
+        )
+
+    return {
+        "analysis_text": analysis_text,
+        "trace_id": captured_trace_id,
+        "llm_result": llm_result,
+    }
 
 
 @validate_state_fields(["agent_info"], "execute_single_agent")
@@ -761,94 +927,27 @@ async def execute_single_agent_node(
                 # Prepare content
                 chunk_content = prepare_chunk_content(single_chunk, files)
 
-                # Validate chunk content
-                metrics = validate_chunk_content(chunk_content, 1, 1, role_name)
-                logger.debug(f"Direct analysis metrics for {role_name}: {metrics}")
-
-                if stream_callback:
-                    stream_callback(
-                        "agent_chunk_start",
-                        {
-                            "agent": role_name,
-                            "agent_id": f"agent_{role_name.lower().replace(' ', '_')}",
-                            "chunk_index": 1,
-                            "total_chunks": 1,
-                            "file": "multiple files", # Simplified for direct analysis
-                            "status": "processing",
-                        },
-                    )
-
-                # Check if tool calling is enabled
-                enable_tool_calling = state.get(StateKeys.ENABLE_TOOL_CALLING, True)
-                max_tool_calls = state.get(StateKeys.MAX_TOOL_CALLS, 10)
-                max_iterations = state.get("max_iterations", 15)  # Not in StateKeys - temporary field
-                max_duplicate_iterations = state.get("max_duplicate_iterations", 3)  # Not in StateKeys - temporary field
-                llm_call_timeout = state.get("llm_call_timeout", 60.0)  # Not in StateKeys - temporary field
-                tools_available = False
-                tools = None
-
-                if enable_tool_calling:
-                    tools_available = check_tool_calling_support(model_name)
-                    if tools_available:
-                        tools = get_tool_definitions()
-                        logger.info(
-                            f"Tool calling enabled for agent {role_name} (model: {model_name})"
-                        )
-
-                # Build analysis message
-                user_message = build_chunk_analysis_message(
+                # Process single chunk using helper
+                chunk_analysis = await _analyze_chunk(
                     chunk_content=chunk_content,
                     chunk_num=1,
                     total_chunks=1,
+                    role_name=role_name,
                     prompt=prompt,
                     architecture_model=architecture_model,
-                    tools_available=tools_available,
+                    architecture_hash=architecture_hash,
+                    langfuse_prompt_id=langfuse_prompt_id,
+                    model_name=model_name,
+                    project_path=project_path,
+                    state=state,
+                    config=config,
+                    stream_callback=stream_callback,
+                    primary_file="multiple files",
+                    analysis_mode="direct"
                 )
 
-                # Use llm_node for analysis
-                llm_state = {
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": build_agent_system_prompt(
-                                role_name, architecture_hash, architecture_model
-                            ),
-                        },
-                        {"role": "user", "content": user_message},
-                    ],
-                    "model": model_name,
-                    "temperature": 0.7,
-                    "metadata": {
-                        "role": role_name,
-                        "chunk_num": 1,
-                        "total_chunks": 1,
-                        "langfuse_prompt_id": langfuse_prompt_id,  # Always include, even if None
-                        "analysis_mode": "direct",  # Mark as direct analysis
-                    },
-                }
-
-                # Add tools if available
-                if tools_available and tools:
-                    llm_state["tools"] = tools
-                    llm_state["tool_choice"] = "auto"
-
-                # Call llm_node with tool calling support
-                if tools_available and tools:
-                    llm_result = await _execute_with_tool_calling(
-                        llm_state=llm_state,
-                        project_path=project_path,
-                        state=state,
-                        config=config,
-                        max_tool_calls=max_tool_calls,
-                        max_iterations=max_iterations,
-                        max_duplicate_iterations=max_duplicate_iterations,
-                        llm_call_timeout=llm_call_timeout,
-                    )
-                else:
-                    llm_result = await llm_node(llm_state, config=config)
-
-                # Extract analysis result
-                analysis_text = llm_result.get("last_response", "")
+                analysis_text = chunk_analysis["analysis_text"]
+                captured_trace_id = chunk_analysis["trace_id"]
 
                 # Store result (no synthesis needed for direct analysis)
                 agent_result = {
@@ -865,18 +964,6 @@ async def execute_single_agent_node(
                 _enrich_result_with_tool_metadata(agent_result, state)
 
                 if stream_callback:
-                    stream_callback(
-                        "agent_chunk_complete",
-                        {
-                            "agent": role_name,
-                            "agent_id": f"agent_{role_name.lower().replace(' ', '_')}",
-                            "chunk_index": 1,
-                            "total_chunks": 1,
-                            "file": "multiple files",
-                            "findings": 0,
-                            "status": "completed",
-                        },
-                    )
                     # Emit agent execution complete
                     stream_callback(
                         "agent_execution_complete",
@@ -889,11 +976,10 @@ async def execute_single_agent_node(
                     )
 
                 logger.info(
-                    f"Agent {role_name} completed direct analysis of {len(files)} files"
+                    f"Agent {role_name} completed direct analysis (via helper) of {len(files)} files"
                 )
 
                 # Return ONLY agent_results_list (has Annotated reducer for parallel updates)
-                # Do NOT return agent_info or other single-value fields to avoid concurrent update conflicts
                 return {"agent_results_list": [agent_result]}
 
 
@@ -924,7 +1010,6 @@ async def execute_single_agent_node(
                 # When agents execute in parallel, we can't store chunks in shared state
 
                 # Process all chunks sequentially within this node
-                # (Parallel chunk processing would require a different graph structure)
                 chunk_results = []
                 for chunk_idx, chunk in enumerate(chunks):
                     chunk_num = chunk_idx + 1
@@ -937,119 +1022,32 @@ async def execute_single_agent_node(
                         if len(chunk.files) > 1:
                             primary_file += f" (+{len(chunk.files)-1} others)"
 
-                    # Emit chunk start event
-                    if stream_callback:
-                        stream_callback(
-                            "agent_chunk_start",
-                            {
-                                "agent": role_name,
-                                "agent_id": f"agent_{role_name.lower().replace(' ', '_')}",
-                                "chunk_index": chunk_num,
-                                "total_chunks": total_chunks_count,
-                                "file": primary_file,
-                                "status": "processing",
-                            },
-                        )
-
                     # Prepare chunk content
                     chunk_content = prepare_chunk_content(chunk, files)
 
-                    # Validate chunk content
-                    metrics = validate_chunk_content(
-                        chunk_content, chunk_num, total_chunks_count, role_name
-                    )
-                    logger.debug(
-                        f"Chunk {chunk_num}/{total_chunks_count} metrics for {role_name}: {metrics}"
-                    )
-
-                    # Check if tool calling is enabled
-                    enable_tool_calling = state.get("enable_tool_calling", True)
-                    max_tool_calls = state.get("max_tool_calls", 10)
-                    max_iterations = state.get("max_iterations", 15)
-                    max_duplicate_iterations = state.get("max_duplicate_iterations", 3)
-                    llm_call_timeout = state.get("llm_call_timeout", 60.0)
-                    tools_available = False
-                    tools = None
-
-                    if enable_tool_calling:
-                        tools_available = check_tool_calling_support(model_name)
-                        if tools_available:
-                            tools = get_tool_definitions()
-
-                    # Build analysis message
-                    user_message = build_chunk_analysis_message(
+                    # Process chunk using helper
+                    chunk_analysis = await _analyze_chunk(
                         chunk_content=chunk_content,
                         chunk_num=chunk_num,
                         total_chunks=total_chunks_count,
+                        role_name=role_name,
                         prompt=prompt,
                         architecture_model=architecture_model,
-                        tools_available=tools_available,
+                        architecture_hash=architecture_hash,
+                        langfuse_prompt_id=langfuse_prompt_id,
+                        model_name=model_name,
+                        project_path=project_path,
+                        state=state,
+                        config=config,
+                        stream_callback=stream_callback,
+                        primary_file=primary_file,
+                        analysis_mode="chunked"
                     )
 
-                    # Use llm_node for chunk analysis
-                    llm_state = {
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": build_agent_system_prompt(
-                                    role_name, architecture_hash, architecture_model
-                                ),
-                            },
-                            {"role": "user", "content": user_message},
-                        ],
-                        "model": model_name,
-                        "temperature": 0.7,
-                        "metadata": {
-                            "role": role_name,
-                            "chunk_num": chunk_num,
-                            "total_chunks": total_chunks_count,
-                            "langfuse_prompt_id": langfuse_prompt_id,
-                        },
-                    }
-
-                    # Add tools if available
-                    if tools_available and tools:
-                        llm_state["tools"] = tools
-                        llm_state["tool_choice"] = "auto"
-
-                    # Call llm_node with tool calling support
-                    if tools_available and tools:
-                        llm_result = await _execute_with_tool_calling(
-                            llm_state=llm_state,
-                            project_path=project_path,
-                            state=state,
-                            config=config,
-                            max_tool_calls=max_tool_calls,
-                            max_iterations=max_iterations,
-                            max_duplicate_iterations=max_duplicate_iterations,
-                            llm_call_timeout=llm_call_timeout,
-                        )
-                    else:
-                        llm_result = await llm_node(llm_state, config=config)
-
-                    # Extract analysis result
-                    analysis_text = llm_result.get("last_response", "")
-
-                    # Emit chunk complete event
-                    if stream_callback:
-                        # Get primary file for display
-                        primary_file = "multiple files"
-                        if hasattr(chunk, "files") and chunk.files:
-                            primary_file = chunk.files[0].file_info.relative_path
-                            if len(chunk.files) > 1:
-                                primary_file += f" (+{len(chunk.files)-1} others)"
-                        stream_callback(
-                            "agent_chunk_complete",
-                            {
-                                "agent": role_name,
-                                "agent_id": f"agent_{role_name.lower().replace(' ', '_')}",
-                                "chunk_index": chunk_num,
-                                "total_chunks": total_chunks_count,
-                                "file": primary_file,
-                                "findings": 0,  # Placeholder
-                                "status": "completed",
-                            },
-                        )
+                    analysis_text = chunk_analysis["analysis_text"]
+                    # For multi-chunk, we typically keep the trace ID of the LAST chunk or the synthesis trace ID.
+                    # Here we capture it to ensure we have it if needed.
+                    captured_trace_id = chunk_analysis["trace_id"]
 
                     # Store chunk result
                     chunk_results.append(
@@ -1121,112 +1119,30 @@ async def execute_single_agent_node(
                 chunk_num = 1
                 total_chunks = 1
 
-                if stream_callback:
-                    stream_callback(
-                        "agent_chunk_start",
-                        {
-                            "agent": role_name,
-                            "agent_id": f"agent_{role_name.lower().replace(' ', '_')}",
-                            "chunk_index": chunk_num,
-                            "total_chunks": total_chunks,
-                            "file": chunk.files[0].file_info.relative_path if chunk.files else "unknown",
-                            "status": "processing",
-                        },
-                    )
-
                 # Prepare chunk content
                 chunk_content = prepare_chunk_content(chunk, files)
 
-                # Validate chunk content and log metrics
-                metrics = validate_chunk_content(
-                    chunk_content, chunk_num, total_chunks, role_name
-                )
-                logger.debug(f"Chunk metrics for {role_name}: {metrics}")
-
-                # Check if tool calling is enabled and model supports it
-                enable_tool_calling = state.get("enable_tool_calling", True)
-                max_tool_calls = state.get("max_tool_calls", 10)
-                max_iterations = state.get("max_iterations", 15)
-                max_duplicate_iterations = state.get("max_duplicate_iterations", 3)
-                llm_call_timeout = state.get("llm_call_timeout", 60.0)
-                tools_available = False
-                tools = None
-
-                if enable_tool_calling:
-                    tools_available = check_tool_calling_support(model_name)
-                    if tools_available:
-                        tools = get_tool_definitions()
-                        logger.info(
-                            f"Tool calling enabled for agent {role_name} (model: {model_name})"
-                        )
-                    else:
-                        logger.info(
-                            f"Tool calling disabled for agent {role_name} (model {model_name} doesn't support it)"
-                        )
-
-                # Build analysis message
-                user_message = build_chunk_analysis_message(
+                # Process single chunk using helper
+                chunk_analysis = await _analyze_chunk(
                     chunk_content=chunk_content,
-                    chunk_num=chunk_num,
-                    total_chunks=total_chunks,
+                    chunk_num=1,
+                    total_chunks=1,
+                    role_name=role_name,
                     prompt=prompt,
                     architecture_model=architecture_model,
-                    tools_available=tools_available,
+                    architecture_hash=architecture_hash,
+                    langfuse_prompt_id=langfuse_prompt_id,
+                    model_name=model_name,
+                    project_path=project_path,
+                    state=state,
+                    config=config,
+                    stream_callback=stream_callback,
+                    primary_file=chunk.files[0].file_info.relative_path if chunk.files else "unknown",
+                    analysis_mode="chunked"
                 )
 
-                # Use llm_node for chunk analysis
-                llm_state = {
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": build_agent_system_prompt(
-                                role_name, architecture_hash, architecture_model
-                            ),
-                        },
-                        {"role": "user", "content": user_message},
-                    ],
-                    "model": model_name,
-                    "temperature": 0.7,
-                    "metadata": {
-                        "role": role_name,
-                        "chunk_num": chunk_num,
-                        "total_chunks": total_chunks,
-                        "langfuse_prompt_id": langfuse_prompt_id,  # Always include, even if None
-                    },
-                }
-
-                # Add tools if available
-                if tools_available and tools:
-                    llm_state["tools"] = tools
-                    llm_state["tool_choice"] = "auto"
-
-                # Call llm_node with tool calling support
-                if tools_available and tools:
-                    llm_result = await _execute_with_tool_calling(
-                        llm_state=llm_state,
-                        project_path=project_path,
-                        state=state,
-                        config=config,
-                        max_tool_calls=max_tool_calls,
-                        max_iterations=max_iterations,
-                        max_duplicate_iterations=max_duplicate_iterations,
-                        llm_call_timeout=llm_call_timeout,
-                    )
-                else:
-                    llm_result = await llm_node(llm_state, config=config)
-
-                # Extract trace ID from llm_result metadata
-                llm_metadata = llm_result.get("metadata", {})
-                if isinstance(llm_metadata, dict):
-                    extracted_trace_id = llm_metadata.get("langfuse_trace_id")
-                    if extracted_trace_id:
-                        captured_trace_id = extracted_trace_id
-                        logger.debug(
-                            f"Captured trace ID for {role_name} (single chunk): {captured_trace_id}"
-                        )
-
-                # Extract analysis result
-                analysis_text = llm_result.get("last_response", "")
+                analysis_text = chunk_analysis["analysis_text"]
+                captured_trace_id = chunk_analysis["trace_id"]
 
                 # Single chunk - use analysis directly
                 synthesized_report = analysis_text
@@ -1272,8 +1188,8 @@ async def execute_single_agent_node(
                     )
             else:
                 # No chunks - error
-                state["error"] = f"No chunks created for agent {role_name}"
-                state["error_stage"] = "execute_single_agent"
+                state[StateKeys.ERROR] = f"No chunks created for agent {role_name}"
+                state[StateKeys.ERROR_STAGE] = "execute_single_agent"
                 return state
         else:
             # Chunking disabled - send full content for all files
@@ -1324,11 +1240,11 @@ When referencing dates in your report, use: {current_date.strftime("%B %d, %Y")}
 """
 
             # Check if tool calling is enabled and model supports it
-            enable_tool_calling = state.get("enable_tool_calling", True)
-            max_tool_calls = state.get("max_tool_calls", 10)
-            max_iterations = state.get("max_iterations", 15)
-            max_duplicate_iterations = state.get("max_duplicate_iterations", 3)
-            llm_call_timeout = state.get("llm_call_timeout", 60.0)
+            enable_tool_calling = state.get(StateKeys.ENABLE_TOOL_CALLING, True)
+            max_tool_calls = state.get(StateKeys.MAX_TOOL_CALLS, 10)
+            max_iterations = state.get(StateKeys.MAX_ITERATIONS, 15)
+            max_duplicate_iterations = state.get(StateKeys.MAX_DUPLICATE_ITERATIONS, 3)
+            llm_call_timeout = state.get(StateKeys.LLM_CALL_TIMEOUT, 60.0)
             tools_available = False
             tools = None
 
@@ -1693,9 +1609,9 @@ def collect_agent_results_node(state: SwarmAnalysisState) -> SwarmAnalysisState:
         )
         logger.error(error_msg, extra=error_context, exc_info=True)
         updated_state = state.copy()
-        updated_state["error"] = error_msg
-        updated_state["error_stage"] = "collect_agent_results"
-        updated_state["error_context"] = error_context
+        updated_state[StateKeys.ERROR] = error_msg
+        updated_state[StateKeys.ERROR_STAGE] = "collect_agent_results"
+        updated_state[StateKeys.ERROR_CONTEXT] = error_context
         if stream_callback:
             stream_callback("swarm_analysis_error", {"error": error_msg})
         return updated_state

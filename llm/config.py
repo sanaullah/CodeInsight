@@ -325,7 +325,7 @@ def ensure_env_ready() -> None:
     # Setup logging if configured
     if hasattr(config, 'logging') and config.logging.enabled:
         try:
-            from utils.logging_config import setup_logging_from_config
+            from utils.config.logging_config import setup_logging_from_config
             setup_logging_from_config()
         except Exception as e:
             # Don't fail if logging setup fails

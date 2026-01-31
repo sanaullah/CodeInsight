@@ -9,7 +9,7 @@ import os
 import logging
 from typing import Optional, Dict, Any, List
 
-from langchain_community.chat_models import ChatLiteLLM
+from langchain_litellm import ChatLiteLLM
 from langchain_core.language_models import BaseChatModel
 
 from llm.config import ConfigManager, ensure_env_ready
@@ -81,7 +81,7 @@ def get_llm(
         llm = ChatLiteLLM(**params)
         return llm
     except ImportError:
-        logger.error("ChatLiteLLM execution failed. Ensure langchain-community and litellm are installed.")
+        logger.error("ChatLiteLLM execution failed. Ensure langchain-litellm is installed.")
         raise
     except Exception as e:
         logger.error(f"Failed to create ChatLiteLLM instance: {e}")

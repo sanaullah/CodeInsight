@@ -16,7 +16,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # Load environment variables from .env file if it exists
-from utils.env_loader import load_env
+from utils.config.env_loader import load_env
 load_env()
 
 from services.db_config import get_db_config, CODELUMEN_DATABASE

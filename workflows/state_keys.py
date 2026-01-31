@@ -41,6 +41,9 @@ class StateKeys(StrEnum):
     ENABLE_TOOL_CALLING = "enable_tool_calling"
     ENABLE_STATIC_DEPENDENCY_RESOLUTION = "enable_static_dependency_resolution"
     MAX_TOOL_CALLS = "max_tool_calls"
+    MAX_ITERATIONS = "max_iterations"
+    MAX_DUPLICATE_ITERATIONS = "max_duplicate_iterations"
+    LLM_CALL_TIMEOUT = "llm_call_timeout"
     
     # File selection
     ENABLE_DYNAMIC_FILE_SELECTION = "enable_dynamic_file_selection"
@@ -96,6 +99,7 @@ class StateKeys(StrEnum):
     # Tool calling
     TOOL_CALLS_MADE = "tool_calls_made"
     TOOL_CALLS_HISTORY = "tool_calls_history"
+    FILE_CACHE = "file_cache"
     
     # Chunk analysis
     CHUNKS = "chunks"
