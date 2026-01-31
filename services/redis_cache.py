@@ -12,6 +12,17 @@ import hashlib
 import threading
 from typing import Any, Optional, Callable, Dict, List
 from functools import wraps
+
+# Try to use orjson for faster JSON parsing if available
+try:
+    import orjson
+    _json_loads = orjson.loads
+    _json_dumps = lambda obj: orjson.dumps(obj, option=orjson.OPT_NON_STR_KEYS).decode('utf-8')
+    _JSONDecodeError = orjson.JSONDecodeError
+except ImportError:
+    _json_loads = json.loads
+    _json_dumps = lambda obj: json.dumps(obj, ensure_ascii=False, default=str)
+    _JSONDecodeError = json.JSONDecodeError
 from datetime import datetime, date
 from enum import Enum
 from services.db_config import get_db_config, RedisConfig
@@ -179,7 +190,7 @@ class RedisCache:
         try:
             # Pre-process value to handle datetime and other non-serializable types
             serialized_value = self._serialize_value(value)
-            return json.dumps(serialized_value).encode('utf-8')
+            return _json_dumps(serialized_value).encode('utf-8')
         except (TypeError, ValueError) as e:
             logger.error(f"Serialization failed: {e}, value type: {type(value)}")
             raise
@@ -198,9 +209,9 @@ class RedisCache:
             Deserialized value with datetime objects restored
         """
         try:
-            decoded = json.loads(data.decode('utf-8'))
+            decoded = _json_loads(data.decode('utf-8'))
             return self._deserialize_value(decoded)
-        except (json.JSONDecodeError, ValueError) as e:
+        except (_JSONDecodeError, ValueError) as e:
             logger.error(f"Deserialization failed: {e}")
             raise
     

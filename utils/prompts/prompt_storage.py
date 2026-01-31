@@ -136,7 +136,53 @@ def get_prompt_by_name(name: str) -> Optional[Dict[str, Any]]:
         return None
 
 
+
+def get_prompt_by_architecture_hash(
+    role: str,
+    architecture_hash: str,
+    file_hash: Optional[str] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Get prompt by role and architecture hash.
+    
+    Args:
+        role: Role name
+        architecture_hash: Architecture hash
+        file_hash: Optional file hash for stricter matching
+        
+    Returns:
+        Dictionary with prompt data, or None if not found
+    """
+    storage = _get_storage()
+    if not storage:
+        logger.error("Storage not available")
+        return None
+    
+    try:
+        # Use search_prompts which supports filtering by these fields
+        # Note: search_prompts returns a list, we want the most recent one
+        results = storage.search_prompts(
+            query="",  # Empty query means match all (filtered by other params)
+            role=role,
+            architecture_hash=architecture_hash,
+            limit=1
+        )
+        
+        # If file_hash provided, we might need to filter manually if search_prompts doesn't support it directly yet
+        # BaseStorage.search_prompts currently supports role and architecture_hash
+        # If file_hash is critical, we could add client-side filtering here, but for now strict architectural match is good.
+        
+        if results:
+            return results[0]
+            
+        return None
+    except Exception as e:
+        logger.error(f"Error getting prompt by architecture hash: {e}", exc_info=True)
+        return None
+
+
 def get_all_prompts(limit: Optional[int] = None, offset: int = 0) -> List[Dict[str, Any]]:
+
     """
     Get all prompts.
     

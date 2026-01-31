@@ -13,7 +13,7 @@ from typing import List, Set, Dict, Tuple, Optional
 from dataclasses import dataclass
 
 from scanners.project_scanner import FileInfo
-from utils.async_io import async_ast_parse
+from utils.io.async_io import async_ast_parse
 
 logger = logging.getLogger(__name__)
 

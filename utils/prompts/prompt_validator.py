@@ -56,7 +56,7 @@ class PromptValidator:
             return True, []
         
         try:
-            from utils.prompt_technology_filter import check_forbidden_technologies
+            from .prompt_technology_filter import check_forbidden_technologies
             
             # Use helper function from prompt_technology_filter
             violations = check_forbidden_technologies(prompt, architecture_model)

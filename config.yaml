@@ -112,6 +112,27 @@ models:
     name: moonshotai/Kimi-K2-Instruct-0905
     output_price_per_1m: 2.0
     
+  moonshotai/kimi-k2.5:
+    description: Kimi K2.5 is Moonshot AI's native multimodal model built on Kimi K2
+      with ~15T mixed visual and text tokens, delivering strong general reasoning, visual
+      coding, and agentic tool-calling. This route uses instant (non-thinking) mode
+      for faster responses.
+    input_price_per_1m: 0.6
+    max_input_tokens: 256000
+    max_output_tokens: 64000
+    name: moonshotai/kimi-k2.5
+    output_price_per_1m: 3.0
+
+  moonshotai/kimi-k2.5:thinking:
+    description: Kimi K2.5 with thinking mode enabled. Built on Kimi K2 with ~15T mixed
+      visual and text tokens, it excels at general reasoning, visual coding, and agentic
+      tool-calling. Produces reasoning traces for complex multi-step workflows.
+    input_price_per_1m: 0.6
+    max_input_tokens: 256000
+    max_output_tokens: 64000
+    name: moonshotai/kimi-k2.5:thinking
+    output_price_per_1m: 3.0
+
   # Qwen Coder Models
   qwen/qwen3-coder:
     description: Qwen 3 Coder 480B, a 480 billion total parameter model with 35B active,
@@ -151,6 +172,15 @@ models:
     max_input_tokens: 200000
     max_output_tokens: 50000
     name: z-ai/glm-4.6:thinking
+    output_price_per_1m: 1.7
+
+  zai-org/glm-4.7-flash:
+    description: Thinking version of the latest GLM series chat model with strong
+      general performance. Quantized at FP8
+    input_price_per_1m: 0.6
+    max_input_tokens: 200000
+    max_output_tokens: 50000
+    name: zai-org/glm-4.7-flash
     output_price_per_1m: 1.7
 
 # Chutes Models

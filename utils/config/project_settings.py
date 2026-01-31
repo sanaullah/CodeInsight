@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 from typing import List, Optional
 
-from utils.settings_db import get_setting, set_setting
+from .settings_db import get_setting, set_setting
 
 logger = logging.getLogger(__name__)
 

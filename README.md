@@ -4,7 +4,7 @@
 
 # CodeInsight
 
-CodeInsight acts as an intelligent sidekick designed to run alongside your development workflow. As you build applications using tools like Cursor, CodeInsight offering a proactive "second pair of eyes" to identify and help resolve issues that aren't immediately apparent during the coding phase.
+CodeInsight acts as an on-demand, intelligent sidekick designed to run alongside your development workflow. As you build applications using tools like Cursor, CodeInsight offers a proactive "second pair of eyes" to identify and help resolve issues that aren't immediately apparent during the coding phase.
 
 By orchestrating a swarm of specialized AI agents, the platform looks beyond the surface of your code to uncover hidden complexities. It empowers you to build with greater confidence by automatically detecting security risks, performance bottlenecks, and architectural inconsistencies in real-time—allowing you to fix problems as they arise, rather than waiting for them to surface later.
 
@@ -104,6 +104,14 @@ Once setup is complete, ensure your virtual environment is active and run:
 streamlit run ui/app.py
 ```
 
+
+## Acknowledgments
+
+**Democratizing AI Development.** One of the biggest barriers to innovation is the cost of compute. CodeInsight exists today largely because of [Nano-GPT](https://nano-gpt.com), a platform that provides access to high-performance open-source models at a fraction of the usual cost.
+
+We believe powerful AI tools should be accessible to everyone—students, hobbyists, and startups alike—without breaking the bank. If you're looking to power your own projects with affordable, high-quality API endpoints, you can get started here:
+
+👉 **[Get Access to Nano-GPT](https://nano-gpt.com/invite/ck3mnXrF)**
 
 ## License
 

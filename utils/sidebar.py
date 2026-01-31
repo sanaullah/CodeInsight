@@ -6,20 +6,28 @@ Provides consistent navigation and status display across all pages.
 
 import streamlit as st
 from datetime import datetime, timezone
+from utils.version import VERSION_STRING
 
 
 def render_sidebar():
     """
     Render the shared sidebar with navigation and status.
-    
-    This function:
-    - Displays sidebar title
-    - Uses native multipage navigation
-    - Shows current date/time in a status block
-    - Includes a refresh button
     """
+    # Hide default sidebar navigation
+    st.markdown(
+        """
+        <style>
+        [data-testid="stSidebarNav"] {
+            display: none;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
     # Sidebar title
     st.sidebar.title("💡 CodeInsight")
+    st.sidebar.markdown(f"**Version**: `{VERSION_STRING}`")
     
     # Native multipage navigation
     st.sidebar.markdown("### 🧭 Navigation")

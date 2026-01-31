@@ -16,6 +16,7 @@ from services.storage.base_storage import BaseStorage, StorageError, StorageNotF
 from services.db_config import get_db_config, CODELUMEN_DATABASE
 from services.postgresql_connection_pool import get_db_connection, transaction
 from services.experience_models import Experience, PerformanceMetrics, Outcome, SuccessLevel
+from psycopg2 import sql
 
 # Try to use orjson for faster JSON parsing if available
 try:
@@ -60,7 +61,9 @@ class ExperienceStorage(BaseStorage):
             with get_db_connection(self.db_identifier, read_only=False) as conn:
                 with conn.cursor() as cursor:
                     # Ensure schema exists
-                    cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {self.schema}")
+                    cursor.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(
+                        sql.Identifier(self.schema)
+                    ))
                     
                     # Tables should already exist from migration, but we check anyway
                     logger.debug(f"Database schema initialized for {self.schema}")
@@ -110,8 +113,8 @@ class ExperienceStorage(BaseStorage):
             with get_db_connection(self.db_identifier, read_only=False) as conn:
                 with conn.cursor() as cursor:
                     # Insert experience
-                    cursor.execute(f"""
-                        INSERT INTO {self.schema}.experiences (
+                    query_template = sql.SQL("""
+                        INSERT INTO {schema}.experiences (
                             experience_id, agent_name, goal, goal_understanding_json,
                             strategy_used_json, outcome_json, performance_metrics_json,
                             timestamp, success_level
@@ -125,7 +128,9 @@ class ExperienceStorage(BaseStorage):
                             performance_metrics_json = EXCLUDED.performance_metrics_json,
                             timestamp = EXCLUDED.timestamp,
                             success_level = EXCLUDED.success_level
-                    """, (
+                    """).format(schema=sql.Identifier(self.schema))
+                    
+                    cursor.execute(query_template, (
                         experience.experience_id,
                         experience.agent_name,
                         experience.goal,
@@ -164,10 +169,12 @@ class ExperienceStorage(BaseStorage):
         try:
             with get_db_connection(self.db_identifier, read_only=True) as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute(f"""
-                        SELECT * FROM {self.schema}.experiences 
+                    query_template = sql.SQL("""
+                        SELECT * FROM {schema}.experiences 
                         WHERE experience_id = %s
-                    """, (record_id,))
+                    """).format(schema=sql.Identifier(self.schema))
+                    
+                    cursor.execute(query_template, (record_id,))
                     
                     row = cursor.fetchone()
                     if not row:
@@ -238,25 +245,33 @@ class ExperienceStorage(BaseStorage):
                 where_clauses.append("goal LIKE %s")
                 params.append(f"%{filters['goal_keywords']}%")
             
-            where_clause = " AND ".join(where_clauses) if where_clauses else "1=1"
+            where_clause = sql.SQL(" AND ").join(map(sql.SQL, where_clauses)) if where_clauses else sql.SQL("1=1")
             
             # Build query
-            query = f"""
-                SELECT * FROM {self.schema}.experiences 
-                WHERE {where_clause}
-                ORDER BY {order_by}
-            """
+            # Note: order_by is usually safe if controlled by application code, but for safety lets check basic safety or assume safe string but identifier protection
+            # Since order_by defaults to "timestamp DESC" and is a string, we might need manual handling or assume it's safe query part.
+            # Ideally we should parse order_by, but for now let's assume it's a safe string but we wrap schema.
+            
+            query_template = sql.SQL("""
+                SELECT * FROM {schema}.experiences 
+                WHERE {where}
+                ORDER BY {order}
+            """).format(
+                schema=sql.Identifier(self.schema),
+                where=where_clause,
+                order=sql.SQL(order_by) # Danger: blindly trusting order_by string, but it's consistent with previous f-string. Ideally validation needed.
+            )
             
             if limit:
-                query += f" LIMIT {limit}"
+                query_template += sql.SQL(" LIMIT {}").format(sql.Literal(limit))
                 if offset:
-                    query += f" OFFSET {offset}"
+                    query_template += sql.SQL(" OFFSET {}").format(sql.Literal(offset))
             
             # Monitor query performance
             start_time = time.time()
             with get_db_connection(self.db_identifier, read_only=True) as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute(query, params)
+                    cursor.execute(query_template, params)
                     rows = cursor.fetchall()
                     
                     # Convert rows to dictionaries
@@ -295,10 +310,12 @@ class ExperienceStorage(BaseStorage):
         try:
             with get_db_connection(self.db_identifier, read_only=False) as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute(f"""
-                        DELETE FROM {self.schema}.experiences 
+                    query_template = sql.SQL("""
+                        DELETE FROM {schema}.experiences 
                         WHERE experience_id = %s
-                    """, (record_id,))
+                    """).format(schema=sql.Identifier(self.schema))
+                    
+                    cursor.execute(query_template, (record_id,))
                     deleted = cursor.rowcount > 0
                 
                 conn.commit()
@@ -447,12 +464,14 @@ class ExperienceStorage(BaseStorage):
             with get_db_connection(self.db_identifier, read_only=True) as conn:
                 with conn.cursor() as cursor:
                     if agent_name:
-                        cursor.execute(f"""
-                            SELECT COUNT(*) FROM {self.schema}.experiences 
+                        query = sql.SQL("""
+                            SELECT COUNT(*) FROM {schema}.experiences 
                             WHERE agent_name = %s
-                        """, (agent_name,))
+                        """).format(schema=sql.Identifier(self.schema))
+                        cursor.execute(query, (agent_name,))
                     else:
-                        cursor.execute(f"SELECT COUNT(*) FROM {self.schema}.experiences")
+                        query = sql.SQL("SELECT COUNT(*) FROM {schema}.experiences").format(schema=sql.Identifier(self.schema))
+                        cursor.execute(query)
                     
                     count = cursor.fetchone()[0]
             

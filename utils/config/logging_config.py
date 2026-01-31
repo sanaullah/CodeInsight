@@ -455,7 +455,7 @@ def setup_logging(
         retention_days: Number of days to keep log files (default: 30)
     """
     # Determine log directory - always resolve relative to project root
-    project_root = Path(__file__).parent.parent
+    project_root = Path(__file__).parent.parent.parent
     if log_dir is None:
         log_dir = project_root / "logs"
     else:
@@ -674,7 +674,7 @@ def setup_logging_from_config() -> None:
                 module_loggers = logging_config.module_loggers
         
         # Resolve log_dir path relative to project root
-        project_root = Path(__file__).parent.parent
+        project_root = Path(__file__).parent.parent.parent
         log_dir_str = logging_config.log_dir if hasattr(logging_config, 'log_dir') else None
         if log_dir_str:
             log_dir_path = Path(log_dir_str)

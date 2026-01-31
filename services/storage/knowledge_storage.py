@@ -16,6 +16,7 @@ from services.storage.base_storage import BaseStorage, StorageError, StorageNotF
 from services.db_config import get_db_config, CODELUMEN_DATABASE
 from services.postgresql_connection_pool import get_db_connection, transaction
 from agents.collaboration_models import Knowledge, KnowledgeType
+from psycopg2 import sql
 
 # Try to use orjson for faster JSON parsing if available
 try:
@@ -60,7 +61,9 @@ class KnowledgeStorage(BaseStorage):
             with get_db_connection(self.db_identifier, read_only=False) as conn:
                 with conn.cursor() as cursor:
                     # Ensure schema exists
-                    cursor.execute(f"CREATE SCHEMA IF NOT EXISTS {self.schema}")
+                    cursor.execute(sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(
+                        sql.Identifier(self.schema)
+                    ))
                     
                     # Tables should already exist from migration, but we check anyway
                     # The migration framework handles table creation
@@ -129,8 +132,8 @@ class KnowledgeStorage(BaseStorage):
             with get_db_connection(self.db_identifier, read_only=False) as conn:
                 with conn.cursor() as cursor:
                     # Insert or update knowledge
-                    cursor.execute(f"""
-                        INSERT INTO {self.schema}.knowledge_base (
+                    query_template = sql.SQL("""
+                        INSERT INTO {schema}.knowledge_base (
                             knowledge_id, agent_name, knowledge_type, content_json,
                             relevance_tags, confidence, created_at, expires_at,
                             metadata_json, access_count, last_accessed, file_hash, project_path
@@ -146,7 +149,9 @@ class KnowledgeStorage(BaseStorage):
                             file_hash = EXCLUDED.file_hash,
                             project_path = EXCLUDED.project_path,
                             updated_at = CURRENT_TIMESTAMP
-                    """, (
+                    """).format(schema=sql.Identifier(self.schema))
+                    
+                    cursor.execute(query_template, (
                         knowledge.knowledge_id,
                         knowledge.agent_name,
                         knowledge.knowledge_type.value if isinstance(knowledge.knowledge_type, KnowledgeType) else str(knowledge.knowledge_type),
@@ -189,11 +194,13 @@ class KnowledgeStorage(BaseStorage):
         try:
             with get_db_connection(self.db_identifier, read_only=True) as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute(f"""
-                        SELECT * FROM {self.schema}.knowledge_base 
+                    query_template = sql.SQL("""
+                        SELECT * FROM {schema}.knowledge_base 
                         WHERE knowledge_id = %s
                         AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)
-                    """, (record_id,))
+                    """).format(schema=sql.Identifier(self.schema))
+                    
+                    cursor.execute(query_template, (record_id,))
                     
                     row = cursor.fetchone()
                     if not row:
@@ -275,23 +282,26 @@ class KnowledgeStorage(BaseStorage):
                 where_clauses.append("relevance_tags && %s")  # Array overlap operator
                 params.append(tags)
             
-            where_clause = " AND ".join(where_clauses)
+            where_clause = sql.SQL(" AND ").join(map(sql.SQL, where_clauses)) if where_clauses else sql.SQL("1=1")
             
             # Build query
-            query = f"""
-                SELECT * FROM {self.schema}.knowledge_base 
-                WHERE {where_clause}
+            query_template = sql.SQL("""
+                SELECT * FROM {schema}.knowledge_base 
+                WHERE {where}
                 ORDER BY confidence DESC, created_at DESC
-            """
+            """).format(
+                schema=sql.Identifier(self.schema),
+                where=where_clause
+            )
             
             if limit:
-                query += f" LIMIT {limit}"
+                query_template += sql.SQL(" LIMIT {}").format(sql.Literal(limit))
                 if offset:
-                    query += f" OFFSET {offset}"
+                    query_template += sql.SQL(" OFFSET {}").format(sql.Literal(offset))
             
             with get_db_connection(self.db_identifier, read_only=True) as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute(query, params)
+                    cursor.execute(query_template, params)
                     rows = cursor.fetchall()
                     
                     # Convert rows to dictionaries
@@ -325,10 +335,12 @@ class KnowledgeStorage(BaseStorage):
         try:
             with get_db_connection(self.db_identifier, read_only=False) as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute(f"""
-                        DELETE FROM {self.schema}.knowledge_base 
+                    query_template = sql.SQL("""
+                        DELETE FROM {schema}.knowledge_base 
                         WHERE knowledge_id = %s
-                    """, (record_id,))
+                    """).format(schema=sql.Identifier(self.schema))
+                    
+                    cursor.execute(query_template, (record_id,))
                     deleted = cursor.rowcount > 0
                 
                 conn.commit()
@@ -446,17 +458,20 @@ class KnowledgeStorage(BaseStorage):
                     where_clauses.append("created_at <= %s")
                     params.append(end_date)
             
-            where_clause = " AND ".join(where_clauses)
+            where_clause = sql.SQL(" AND ").join(map(sql.SQL, where_clauses)) if where_clauses else sql.SQL("1=1")
             
             # Build query with relevance scoring
-            search_query = f"""
+            search_query = sql.SQL("""
                 SELECT *, 
                        ts_rank(to_tsvector('english', content_json::text), plainto_tsquery('english', %s)) as rank
-                FROM {self.schema}.knowledge_base 
-                WHERE {where_clause}
+                FROM {schema}.knowledge_base 
+                WHERE {where}
                 ORDER BY rank DESC, confidence DESC, created_at DESC
                 LIMIT %s
-            """
+            """).format(
+                schema=sql.Identifier(self.schema),
+                where=where_clause
+            )
             
             # Add query to params for ranking (even if empty, for consistency)
             search_params = [query if query else '', *params, limit]
@@ -557,14 +572,18 @@ class KnowledgeStorage(BaseStorage):
                 where_clauses.append("knowledge_id = %s")
                 params.append(knowledge_id)
             
-            where_clause = " AND ".join(where_clauses)
-            order_by = "ORDER BY created_at DESC LIMIT 1" if not version else ""
+            where_clause = sql.SQL(" AND ").join(map(sql.SQL, where_clauses)) if where_clauses else sql.SQL("1=1")
+            order_by = sql.SQL("ORDER BY created_at DESC LIMIT 1") if not version else sql.SQL("")
             
-            query = f"""
-                SELECT * FROM {self.schema}.knowledge_base 
-                WHERE {where_clause}
-                {order_by}
-            """
+            query = sql.SQL("""
+                SELECT * FROM {schema}.knowledge_base 
+                WHERE {where}
+                {order}
+            """).format(
+                schema=sql.Identifier(self.schema),
+                where=where_clause,
+                order=order_by
+            )
             
             with get_db_connection(self.db_identifier, read_only=True) as conn:
                 with conn.cursor() as cursor:
@@ -632,13 +651,20 @@ class KnowledgeStorage(BaseStorage):
             set_clauses.append("updated_at = CURRENT_TIMESTAMP")
             params.append(knowledge_id)
             
+            # Convert set clauses to sql.SQL objects
+            set_clauses_sql = [sql.SQL(clause) for clause in set_clauses]
+            
             with get_db_connection(self.db_identifier, read_only=False) as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute(f"""
-                        UPDATE {self.schema}.knowledge_base 
-                        SET {', '.join(set_clauses)}
+                    query_template = sql.SQL("""
+                        UPDATE {schema}.knowledge_base 
+                        SET {updates}
                         WHERE knowledge_id = %s
-                    """, params)
+                    """).format(
+                        schema=sql.Identifier(self.schema),
+                        updates=sql.SQL(", ").join(set_clauses_sql)
+                    )
+                    cursor.execute(query_template, params)
                     updated = cursor.rowcount > 0
                 
                 conn.commit()
@@ -660,37 +686,41 @@ class KnowledgeStorage(BaseStorage):
             with get_db_connection(self.db_identifier, read_only=True) as conn:
                 with conn.cursor() as cursor:
                     # Total count
-                    cursor.execute(f"""
-                        SELECT COUNT(*) FROM {self.schema}.knowledge_base
+                    query_total = sql.SQL("""
+                        SELECT COUNT(*) FROM {schema}.knowledge_base
                         WHERE expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP
-                    """)
+                    """).format(schema=sql.Identifier(self.schema))
+                    cursor.execute(query_total)
                     total = cursor.fetchone()[0]
                     
                     # Count by type
-                    cursor.execute(f"""
+                    query_by_type = sql.SQL("""
                         SELECT knowledge_type, COUNT(*) 
-                        FROM {self.schema}.knowledge_base
+                        FROM {schema}.knowledge_base
                         WHERE expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP
                         GROUP BY knowledge_type
-                    """)
+                    """).format(schema=sql.Identifier(self.schema))
+                    cursor.execute(query_by_type)
                     by_type = dict(cursor.fetchall())
                     
                     # Count by agent
-                    cursor.execute(f"""
+                    query_by_agent = sql.SQL("""
                         SELECT agent_name, COUNT(*) 
-                        FROM {self.schema}.knowledge_base
+                        FROM {schema}.knowledge_base
                         WHERE expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP
                         GROUP BY agent_name
                         ORDER BY COUNT(*) DESC
                         LIMIT 10
-                    """)
+                    """).format(schema=sql.Identifier(self.schema))
+                    cursor.execute(query_by_agent)
                     by_agent = dict(cursor.fetchall())
                     
                     # Expired count
-                    cursor.execute(f"""
-                        SELECT COUNT(*) FROM {self.schema}.knowledge_base
+                    query_expired = sql.SQL("""
+                        SELECT COUNT(*) FROM {schema}.knowledge_base
                         WHERE expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP
-                    """)
+                    """).format(schema=sql.Identifier(self.schema))
+                    cursor.execute(query_expired)
                     expired = cursor.fetchone()[0]
             
             return {
@@ -714,10 +744,11 @@ class KnowledgeStorage(BaseStorage):
         try:
             with get_db_connection(self.db_identifier, read_only=False) as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute(f"""
-                        DELETE FROM {self.schema}.knowledge_base
+                    query_delete = sql.SQL("""
+                        DELETE FROM {schema}.knowledge_base
                         WHERE expires_at IS NOT NULL AND expires_at <= CURRENT_TIMESTAMP
-                    """)
+                    """).format(schema=sql.Identifier(self.schema))
+                    cursor.execute(query_delete)
                     deleted = cursor.rowcount
                 
                 conn.commit()
@@ -741,12 +772,13 @@ class KnowledgeStorage(BaseStorage):
         try:
             with get_db_connection(self.db_identifier, read_only=False) as conn:
                 with conn.cursor() as cursor:
-                    cursor.execute(f"""
-                        UPDATE {self.schema}.knowledge_base 
+                    query_update = sql.SQL("""
+                        UPDATE {schema}.knowledge_base 
                         SET access_count = access_count + 1,
                             last_accessed = CURRENT_TIMESTAMP
                         WHERE knowledge_id = %s
-                    """, (knowledge_id,))
+                    """).format(schema=sql.Identifier(self.schema))
+                    cursor.execute(query_update, (knowledge_id,))
                 
                 conn.commit()
         except Exception as e:

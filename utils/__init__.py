@@ -17,7 +17,7 @@ from .workflows_integration import (
     create_workflows_config
 )
 
-from .logging_config import (
+from .config.logging_config import (
     setup_logging,
     setup_logging_from_config
 )

@@ -32,10 +32,10 @@ def load_env(env_file: Optional[str] = None) -> bool:
         )
         return False
     
-    # Determine project root (parent of utils/ directory)
+    # Determine project root (parent of utils/config/ directory)
     if env_file is None:
-        # This file is in utils/, so parent is project root
-        project_root = Path(__file__).parent.parent
+        # This file is in utils/config/, so parent is utils/config, parent.parent is utils, parent.parent.parent is project root
+        project_root = Path(__file__).parent.parent.parent
         env_file = project_root / ".env"
     else:
         env_file = Path(env_file)
