@@ -203,7 +203,7 @@ LANGUAGE_METADATA: Dict[Language, LanguageMetadata] = {
         parser_support=True,
         tree_sitter_grammar=None,
         ignore_patterns=["WEB-INF", "cfclasses"],
-        dependency_files=["Application.cfc", "Application.cfm", "box.json"],
+        dependency_files=["Application.cfc", "Application.cfm", "Application.bx", "box.json"],
         comment_style="<!--",
     ),
 }
