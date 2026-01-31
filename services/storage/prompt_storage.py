@@ -389,17 +389,25 @@ class PromptStorage(BaseStorage):
             
             where_clause = " AND ".join(conditions) if conditions else "1=1"
             
-            search_query = f"""
-                SELECT *, ts_rank(to_tsvector('english', prompt_content), plainto_tsquery('english', %s)) as rank
-                FROM {self.schema}.prompts
-                WHERE {where_clause}
-                ORDER BY rank DESC, created_at DESC
-                LIMIT %s
-            """
-            
-            # Add query to params for ranking
             if query:
+                search_query = f"""
+                    SELECT *, ts_rank(to_tsvector('english', prompt_content), plainto_tsquery('english', %s)) as rank
+                    FROM {self.schema}.prompts
+                    WHERE {where_clause}
+                    ORDER BY rank DESC, created_at DESC
+                    LIMIT %s
+                """
+                # Add query to params for ranking
                 params.insert(0, query)
+            else:
+                search_query = f"""
+                    SELECT *, 0 as rank
+                    FROM {self.schema}.prompts
+                    WHERE {where_clause}
+                    ORDER BY created_at DESC
+                    LIMIT %s
+                """
+            
             params.append(limit)
             
             with get_db_connection(self.db_identifier, read_only=True) as conn:
