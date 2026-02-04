@@ -8,24 +8,44 @@ CodeInsight acts as an on-demand, intelligent sidekick designed to run alongside
 
 By orchestrating a swarm of specialized AI agents, the platform looks beyond the surface of your code to uncover hidden complexities. It empowers you to build with greater confidence by automatically detecting security risks, performance bottlenecks, and architectural inconsistencies in real-time—allowing you to fix problems as they arise, rather than waiting for them to surface later.
 
-## Supported Languages
+## 📺 OpenCode Demo: The Future of Agentic Coding
+
+> "Moving from single-agent bottlenecks to high-performance modular orchestration."
+
+Learn how to build a scalable, modular agent system in under 15 minutes. This walkthrough demonstrates how to orchestrate multiple specialized agents to handle complex logic, debugging, and documentation in parallel.
+
+<p align="center">
+  <a href="https://www.youtube.com/watch?v=ACodUPEYzrM">
+    <img src="https://img.youtube.com/vi/ACodUPEYzrM/maxresdefault.jpg" width="600" alt="OpenCode Demo Thumbnail" style="border-radius: 10px; box-shadow: 0 4px 8px rgba(0,0,0,0.2);">
+  </a>
+</p>
+
+### ⚡ **The Speed-Run Summary**
+
+* **🧩 Modular Orchestration**: Transition from a single heavy agent to a "Lead Architect" that delegates to specialized sub-agents (Reviewers, Testers, Docs).
+* **🛠️ Hybrid Configuration**: Effortlessly configure agents using **JSON** or **Markdown** to define roles, models, and toolsets.
+* **🤖 Multi-Model Swarms**: Seamlessly mix Claude 3.5, Gemini 1.5, and GPT-4o in a single workflow optimized for task complexity.
+* *🧠 Solving Context Limits**: Leverage delegation to prevent "context bloat," keeping agents hyper-focused on large codebases.*
+
+---
+
+## 🛠️ Supported Languages
 
 CodeInsight supports analysis for a wide range of programming languages, including:
 
-- **Core**: Python, JavaScript, TypeScript, Java, C/C++, C#
-- **Systems**: Go, Rust, Swift, Kotlin
-- **Web**: HTML, CSS, PHP, Ruby
-- **Scripting**: Shell, PowerShell, Lua, Perl
-- **Data/Config**: SQL, YAML, JSON, XML, Markdown, R, MATLAB
-- **Other**: BoxLang, ColdFusion, Dart, Scala
-
+* **Core**: Python, JavaScript, TypeScript, Java, C/C++, C#
+* **Systems**: Go, Rust, Swift, Kotlin
+* **Web**: HTML, CSS, PHP, Ruby
+* **Scripting**: Shell, PowerShell, Lua, Perl
+* **Data/Config**: SQL, YAML, JSON, XML, Markdown, R, MATLAB
+* **Other**: BoxLang, ColdFusion, Dart, Scala
 
 ## Getting Started
 
 ### Prerequisites
 
-- Python 3.10 or higher
-- Docker (for running Langfuse locally)
+* Python 3.10 or higher
+* Docker (for running Langfuse locally)
 
 ### Installation
 
@@ -35,22 +55,25 @@ You can set up CodeInsight using the provided automated scripts (recommended) or
 
 The setup scripts automatically create a virtual environment, install dependencies, prepare configuration files, start Langfuse services (via Docker), and initialize the database.
 
-1.  **Run Setup Script:**
+1. **Run Setup Script:**
     **On Windows:**
-    - **Double-click** `setup.bat` in the project root.
-    - *Or run via PowerShell:*
+    * **Double-click** `setup.bat` in the project root.
+    * *Or run via PowerShell:*
+
       ```powershell
       powershell.exe -ExecutionPolicy Bypass -File "setup.ps1"
       ```
+
     **On Linux/macOS:**
+
     ```bash
     python3 setup.py
     ```
 
-2.  **Configure Keys:**
+2. **Configure Keys:**
     Once the script finishes, it will have created a `.env` file for you. Open it and add your required keys:
-    - `OPENAI_API_KEY`: Your model provider API key.
-    - `LANGFUSE_PUBLIC_KEY` & `LANGFUSE_SECRET_KEY`: (Optional) For observability.
+    * `OPENAI_API_KEY`: Your model provider API key.
+    * `LANGFUSE_PUBLIC_KEY` & `LANGFUSE_SECRET_KEY`: (Optional) For observability.
 
 ---
 
@@ -58,7 +81,8 @@ The setup scripts automatically create a virtual environment, install dependenci
 
 If the automated scripts fail or if you prefer a custom setup, follow these steps:
 
-1.  **Create & Activate Virtual Environment**:
+1. **Create & Activate Virtual Environment**:
+
     ```bash
     python -m venv .venv
     # Windows:
@@ -67,29 +91,33 @@ If the automated scripts fail or if you prefer a custom setup, follow these step
     source .venv/bin/activate
     ```
 
-2.  **Install Dependencies**:
+2. **Install Dependencies**:
+
     ```bash
     pip install -r requirements.txt
     ```
 
-3.  **Prepare Configuration Files**:
+3. **Prepare Configuration Files**:
     Copy the example files:
+
     ```bash
     cp .env.example .env
     cp config.yaml.example config.yaml
     ```
 
-4.  **Configure Keys**:
+4. **Configure Keys**:
     Edit `.env` and add your required keys:
-    - `OPENAI_API_KEY` (Required for LLM)
-    - `LANGFUSE_PUBLIC_KEY` & `LANGFUSE_SECRET_KEY` (Optional)
+    * `OPENAI_API_KEY` (Required for LLM)
+    * `LANGFUSE_PUBLIC_KEY` & `LANGFUSE_SECRET_KEY` (Optional)
 
-5.  **Start Langfuse (Docker)**:
+5. **Start Langfuse (Docker)**:
+
     ```bash
     docker compose -f langfuse/docker-compose.yml up -d
     ```
 
-6.  **Initialize Database**:
+6. **Initialize Database**:
+
     ```bash
     python scripts/init_database.py
     ```
@@ -103,7 +131,6 @@ Once setup is complete, ensure your virtual environment is active and run:
 ```bash
 streamlit run ui/app.py
 ```
-
 
 ## Acknowledgments
 
