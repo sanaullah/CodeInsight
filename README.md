@@ -104,6 +104,8 @@ Once setup is complete, ensure your virtual environment is active and run:
 streamlit run ui/app.py
 ```
 
+Demo Video: OpenCode was used as part of analysis
+https://www.youtube.com/watch?v=ACodUPEYzrM&t=4s
 
 ## Acknowledgments
 
