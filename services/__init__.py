@@ -89,4 +89,3 @@ __all__ = [
     "get_minio_client",
     "MINIO_AVAILABLE",
 ]
-

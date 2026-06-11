@@ -17,6 +17,7 @@ sys.path.insert(0, str(project_root))
 
 # Load environment variables from .env file if it exists
 from utils.config.env_loader import load_env
+
 load_env()
 
 from services.db_config import get_db_config, CODELUMEN_DATABASE
@@ -484,15 +485,16 @@ CREATE INDEX IF NOT EXISTS idx_user_settings_updated_at
 # MAIN INITIALIZATION LOGIC
 # =============================================================================
 
+
 def create_database() -> bool:
     """
     Create the codelumen database if it doesn't exist.
-    
+
     Returns:
         True if successful, False otherwise
     """
     config = get_db_config().postgresql
-    
+
     try:
         # Connect to default postgres database to create new database
         conn = psycopg2.connect(
@@ -500,30 +502,35 @@ def create_database() -> bool:
             port=config.port,
             user=config.user,
             password=config.password,
-            database="postgres"  # Connect to default database
+            database="postgres",  # Connect to default database
         )
         conn.autocommit = True  # Required for CREATE DATABASE
-        
+
         with conn.cursor() as cursor:
             # Check if database exists
-            cursor.execute("""
+            cursor.execute(
+                """
                 SELECT 1 FROM pg_database WHERE datname = %s
-            """, (CODELUMEN_DATABASE,))
-            
+            """,
+                (CODELUMEN_DATABASE,),
+            )
+
             exists = cursor.fetchone()
-            
+
             if exists:
                 logger.info(f"Database '{CODELUMEN_DATABASE}' already exists")
             else:
                 # Create database
                 cursor.execute(
-                    sql.SQL("CREATE DATABASE {}").format(sql.Identifier(CODELUMEN_DATABASE))
+                    sql.SQL("CREATE DATABASE {}").format(
+                        sql.Identifier(CODELUMEN_DATABASE)
+                    )
                 )
                 logger.info(f"Created database '{CODELUMEN_DATABASE}'")
-        
+
         conn.close()
         return True
-        
+
     except psycopg2.Error as e:
         logger.error(f"Error creating database: {e}")
         return False
@@ -536,17 +543,17 @@ def initialize_schema() -> bool:
     config = get_db_config().postgresql
     schema = config.schema
     cache_schema = config.cache_schema
-    
+
     # Helper to replace schema placeholders
     def prepare_sql(sql_template: str) -> str:
         # Replace schema references
         sql = sql_template.replace("codelumen.", f"{schema}.")
         sql = sql_template.replace("codelumen_cache.", f"{cache_schema}.")
-        
+
         # Replace schema definitions and permissions
         sql = sql.replace("SCHEMA codelumen", f"SCHEMA {schema}")
         sql = sql.replace("SCHEMA codelumen_cache", f"SCHEMA {cache_schema}")
-        
+
         return sql
 
     try:
@@ -555,15 +562,15 @@ def initialize_schema() -> bool:
                 # 1. Create schemas
                 logger.info("Executing Schema Creation...")
                 cursor.execute(prepare_sql(SQL_CREATE_SCHEMAS))
-                
+
                 # 2. Create tables
                 logger.info("Executing Table Creation...")
                 cursor.execute(prepare_sql(SQL_CREATE_TABLES))
-                
+
                 # 3. Create indexes
                 logger.info("Executing Index Creation...")
                 cursor.execute(prepare_sql(SQL_CREATE_INDEXES))
-                
+
                 # 4. Initialize schema_version table
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS schema_version (
@@ -572,25 +579,27 @@ def initialize_schema() -> bool:
                         description VARCHAR
                     )
                 """)
-                
+
                 # Check current version
                 cursor.execute("SELECT MAX(version) FROM schema_version")
                 result = cursor.fetchone()
                 current_version = result[0] if result else 0
-                
+
                 if current_version is None:
                     current_version = 0
 
                 # If version is 0 (fresh install), mark as initial setup
                 if current_version == 0:
-                     logger.info("Setting initial schema version...")
-                     cursor.execute("INSERT INTO schema_version (version, description) VALUES (1, 'Initial Setup via init_database.py')")
-                
+                    logger.info("Setting initial schema version...")
+                    cursor.execute(
+                        "INSERT INTO schema_version (version, description) VALUES (1, 'Initial Setup via init_database.py')"
+                    )
+
             conn.commit()
-        
+
         logger.info("Schema initialization completed successfully")
         return True
-        
+
     except Exception as e:
         logger.error(f"Error initializing schema: {e}")
         return False
@@ -599,19 +608,19 @@ def initialize_schema() -> bool:
 def main():
     """Main initialization function."""
     logger.info("Initializing database for CodeLumen...")
-    
+
     # Step 1: Create database
     logger.info("Step 1: Creating database...")
     if not create_database():
         logger.error("Failed to create database")
         return 1
-    
+
     # Step 2: Initialize Schema (Schemas, Tables, Indexes)
     logger.info("Step 2: Initializing Schema...")
     if not initialize_schema():
         logger.error("Failed to initialize schema")
         return 1
-    
+
     logger.info("Database initialization completed successfully!")
     return 0
 

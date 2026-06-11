@@ -23,6 +23,7 @@ except ImportError:
 
 class SuccessLevel(Enum):
     """Levels of success achievement."""
+
     FULL = "full"
     PARTIAL = "partial"
     FAILED = "failed"
@@ -31,6 +32,7 @@ class SuccessLevel(Enum):
 @dataclass
 class PerformanceMetrics:
     """Performance metrics for an experience."""
+
     goal_achievement_score: float = 0.0  # 0.0 to 1.0
     quality_score: float = 0.0
     efficiency_score: float = 0.0
@@ -43,6 +45,7 @@ class PerformanceMetrics:
 @dataclass
 class Outcome:
     """Outcome of an experience."""
+
     success: bool = False
     success_level: SuccessLevel = SuccessLevel.PARTIAL
     primary_achievements: List[str] = field(default_factory=list)
@@ -54,6 +57,7 @@ class Outcome:
 @dataclass
 class Experience:
     """Agent experience record."""
+
     experience_id: str
     agent_name: str
     goal: str
@@ -68,13 +72,3 @@ class Experience:
     adaptations_made: List[AdaptationRecord] = field(default_factory=list)
     timestamp: datetime = field(default_factory=datetime.now)
     duration: float = 0.0  # seconds
-
-
-
-
-
-
-
-
-
-

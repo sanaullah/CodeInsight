@@ -25,13 +25,13 @@ logger = logging.getLogger(__name__)
 class LanguageDetector:
     """
     Detects programming languages in a project.
-    
+
     Uses multiple heuristics:
     1. File extension analysis
     2. Configuration file detection
     3. Project structure analysis
     """
-    
+
     # Configuration files that indicate specific languages
     CONFIG_FILE_INDICATORS: Dict[str, List[Language]] = {
         # Python
@@ -94,120 +94,124 @@ class LanguageDetector:
         "Application.cfc": [Language.COLDFUSION],
         "Application.cfm": [Language.COLDFUSION],
     }
-    
+
     def __init__(self, min_confidence: float = 0.3):
         """
         Initialize language detector.
-        
+
         Args:
             min_confidence: Minimum confidence threshold (0.0-1.0) for language detection
         """
         self.min_confidence = min_confidence
-    
+
     def detect_languages(self, project_path: str) -> Dict[str, float]:
         """
         Detect languages in a project.
-        
+
         Args:
             project_path: Path to project directory
-        
+
         Returns:
             Dictionary mapping language names to confidence scores (0.0-1.0)
         """
         project_root = Path(project_path).resolve()
-        
+
         if not project_root.exists() or not project_root.is_dir():
             logger.warning(f"Invalid project path: {project_path}")
             return {}
-        
+
         logger.info(f"Detecting languages in: {project_root}")
-        
+
         # Collect evidence from multiple sources
         extension_evidence = self._analyze_file_extensions(project_root)
         config_evidence = self._analyze_config_files(project_root)
-        
+
         # Combine evidence
         language_scores: Dict[Language, float] = defaultdict(float)
-        
+
         # File extension evidence (weight: 0.6)
         for lang, score in extension_evidence.items():
             language_scores[lang] += score * 0.6
-        
+
         # Config file evidence (weight: 0.4, but higher confidence)
         for lang, score in config_evidence.items():
             language_scores[lang] += score * 0.4
-        
+
         # Normalize scores to 0.0-1.0 range
         if language_scores:
             max_score = max(language_scores.values())
             if max_score > 0:
                 for lang in language_scores:
                     language_scores[lang] = min(1.0, language_scores[lang] / max_score)
-        
+
         # Filter by minimum confidence
         filtered_scores = {
             lang.value: score
             for lang, score in language_scores.items()
             if score >= self.min_confidence
         }
-        
+
         # Sort by confidence (descending)
-        sorted_scores = dict(sorted(filtered_scores.items(), key=lambda x: x[1], reverse=True))
-        
+        sorted_scores = dict(
+            sorted(filtered_scores.items(), key=lambda x: x[1], reverse=True)
+        )
+
         logger.info(f"Detected languages: {sorted_scores}")
         return sorted_scores
-    
+
     def _analyze_file_extensions(self, project_root: Path) -> Dict[Language, float]:
         """
         Analyze file extensions to detect languages.
-        
+
         Args:
             project_root: Project root directory
-        
+
         Returns:
             Dictionary mapping languages to confidence scores
         """
         extension_counts: Dict[str, int] = defaultdict(int)
         total_files = 0
-        
+
         # Count files by extension (limit depth to avoid scanning too much)
         try:
             for file_path in project_root.rglob("*"):
-                if file_path.is_file() and not self._should_skip_file(file_path, project_root):
+                if file_path.is_file() and not self._should_skip_file(
+                    file_path, project_root
+                ):
                     ext = file_path.suffix.lower()
                     if ext:
                         extension_counts[ext] += 1
                         total_files += 1
         except Exception as e:
             logger.warning(f"Error scanning files: {e}")
-        
+
         if total_files == 0:
             return {}
-        
+
         # Map extensions to languages and calculate scores
         language_scores: Dict[Language, float] = defaultdict(float)
-        
+
         for ext, count in extension_counts.items():
             lang = EXTENSION_TO_LANGUAGE.get(ext)
             if lang:
                 # Score based on file count (normalized)
                 score = count / total_files
                 language_scores[lang] += score
-        
+
         return language_scores
-    
+
     def _analyze_config_files(self, project_root: Path) -> Dict[Language, float]:
         """
         Analyze configuration files to detect languages.
-        
+
         Args:
             project_root: Project root directory
-        
+
         Returns:
             Dictionary mapping languages to confidence scores
         """
         language_scores: Dict[Language, float] = defaultdict(float)
-        
+
         # Check for config files
         for config_file, languages in self.CONFIG_FILE_INDICATORS.items():
             if "*" in config_file:
@@ -226,63 +230,80 @@ class LanguageDetector:
                     # High confidence for config files
                     for lang in languages:
                         language_scores[lang] += 0.8
-        
+
         return language_scores
-    
+
     def _should_skip_file(self, file_path: Path, project_root: Path) -> bool:
         """
         Check if a file should be skipped during language detection.
-        
+
         Args:
             file_path: File path to check
             project_root: Project root directory
-        
+
         Returns:
             True if file should be skipped
         """
         # Skip common ignore patterns
         ignore_patterns = {
-            ".git", "__pycache__", "node_modules", "venv", ".venv",
-            "target", "build", "dist", ".idea", ".vscode", ".DS_Store",
-            "vendor", ".next", ".nuxt", "*.min.js", "*.min.css"
+            ".git",
+            "__pycache__",
+            "node_modules",
+            "venv",
+            ".venv",
+            "target",
+            "build",
+            "dist",
+            ".idea",
+            ".vscode",
+            ".DS_Store",
+            "vendor",
+            ".next",
+            ".nuxt",
+            "*.min.js",
+            "*.min.css",
         }
-        
+
         try:
             relative_path = file_path.relative_to(project_root)
             for part in relative_path.parts:
                 if part in ignore_patterns:
                     return True
                 # Check for patterns
-                if any(pattern.replace("*", "") in part for pattern in ignore_patterns if "*" in pattern):
+                if any(
+                    pattern.replace("*", "") in part
+                    for pattern in ignore_patterns
+                    if "*" in pattern
+                ):
                     return True
         except ValueError:
             return True
-        
+
         return False
-    
+
     def get_file_extensions_for_languages(self, languages: List[str]) -> List[str]:
         """
         Get file extensions for a list of languages.
-        
+
         Args:
             languages: List of language names
-        
+
         Returns:
             List of file extensions
         """
         from .language_config import get_extensions_for_languages
+
         return get_extensions_for_languages(languages)
-    
+
     def is_multi_language_project(self, project_path: str) -> bool:
         """
         Check if project contains multiple languages.
-        
+
         Args:
             project_path: Path to project directory
-        
+
         Returns:
             True if multiple languages detected
         """
         detected = self.detect_languages(project_path)
         return len(detected) > 1
-

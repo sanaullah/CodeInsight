@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 class Language(str, Enum):
     """Supported programming languages."""
+
     PYTHON = "python"
     JAVASCRIPT = "javascript"
     TYPESCRIPT = "typescript"
@@ -46,6 +47,7 @@ class Language(str, Enum):
 @dataclass
 class LanguageMetadata:
     """Metadata for a programming language."""
+
     name: str
     extensions: List[str]
     parser_support: bool
@@ -103,8 +105,22 @@ LANGUAGE_METADATA: Dict[Language, LanguageMetadata] = {
         extensions=[".py", ".pyw", ".pyi"],
         parser_support=True,
         tree_sitter_grammar="tree-sitter-python",
-        ignore_patterns=["__pycache__", "*.pyc", "*.pyo", ".pytest_cache", ".mypy_cache", ".ruff_cache"],
-        dependency_files=["requirements.txt", "pyproject.toml", "setup.py", "setup.cfg", "poetry.lock", "Pipfile"],
+        ignore_patterns=[
+            "__pycache__",
+            "*.pyc",
+            "*.pyo",
+            ".pytest_cache",
+            ".mypy_cache",
+            ".ruff_cache",
+        ],
+        dependency_files=[
+            "requirements.txt",
+            "pyproject.toml",
+            "setup.py",
+            "setup.cfg",
+            "poetry.lock",
+            "Pipfile",
+        ],
         comment_style="#",
     ),
     Language.JAVASCRIPT: LanguageMetadata(
@@ -113,7 +129,12 @@ LANGUAGE_METADATA: Dict[Language, LanguageMetadata] = {
         parser_support=True,
         tree_sitter_grammar="tree-sitter-javascript",
         ignore_patterns=["node_modules", "*.min.js", ".next", ".nuxt"],
-        dependency_files=["package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"],
+        dependency_files=[
+            "package.json",
+            "package-lock.json",
+            "yarn.lock",
+            "pnpm-lock.yaml",
+        ],
         comment_style="//",
     ),
     Language.TYPESCRIPT: LanguageMetadata(
@@ -122,7 +143,12 @@ LANGUAGE_METADATA: Dict[Language, LanguageMetadata] = {
         parser_support=True,
         tree_sitter_grammar="tree-sitter-typescript",
         ignore_patterns=["node_modules", "*.min.js", ".next", ".nuxt", "dist"],
-        dependency_files=["package.json", "package-lock.json", "yarn.lock", "tsconfig.json"],
+        dependency_files=[
+            "package.json",
+            "package-lock.json",
+            "yarn.lock",
+            "tsconfig.json",
+        ],
         comment_style="//",
     ),
     Language.JAVA: LanguageMetadata(
@@ -131,7 +157,12 @@ LANGUAGE_METADATA: Dict[Language, LanguageMetadata] = {
         parser_support=True,
         tree_sitter_grammar="tree-sitter-java",
         ignore_patterns=["target", "build", "*.class", ".gradle"],
-        dependency_files=["pom.xml", "build.gradle", "build.gradle.kts", "settings.gradle"],
+        dependency_files=[
+            "pom.xml",
+            "build.gradle",
+            "build.gradle.kts",
+            "settings.gradle",
+        ],
         comment_style="//",
     ),
     Language.GO: LanguageMetadata(
@@ -203,7 +234,12 @@ LANGUAGE_METADATA: Dict[Language, LanguageMetadata] = {
         parser_support=True,
         tree_sitter_grammar=None,
         ignore_patterns=["WEB-INF", "cfclasses"],
-        dependency_files=["Application.cfc", "Application.cfm", "Application.bx", "box.json"],
+        dependency_files=[
+            "Application.cfc",
+            "Application.cfm",
+            "Application.bx",
+            "box.json",
+        ],
         comment_style="<!--",
     ),
 }
@@ -212,10 +248,10 @@ LANGUAGE_METADATA: Dict[Language, LanguageMetadata] = {
 def get_extensions_for_languages(languages: List[str]) -> List[str]:
     """
     Get file extensions for a list of language names.
-    
+
     Args:
         languages: List of language names (e.g., ["python", "javascript"])
-    
+
     Returns:
         List of file extensions (e.g., [".py", ".js", ".jsx"])
     """
@@ -234,10 +270,10 @@ def get_extensions_for_languages(languages: List[str]) -> List[str]:
 def get_language_for_extension(extension: str) -> Optional[Language]:
     """
     Get language for a file extension.
-    
+
     Args:
         extension: File extension (e.g., ".py", ".js")
-    
+
     Returns:
         Language enum or None if not found
     """
@@ -247,7 +283,7 @@ def get_language_for_extension(extension: str) -> Optional[Language]:
 def get_supported_languages() -> List[str]:
     """
     Get list of all supported language names.
-    
+
     Returns:
         List of language names
     """
@@ -257,10 +293,10 @@ def get_supported_languages() -> List[str]:
 def get_language_metadata(language: str) -> Optional[LanguageMetadata]:
     """
     Get metadata for a language.
-    
+
     Args:
         language: Language name (e.g., "python")
-    
+
     Returns:
         LanguageMetadata or None if not found
     """
@@ -274,7 +310,7 @@ def get_language_metadata(language: str) -> Optional[LanguageMetadata]:
 def get_all_dependency_file_patterns() -> List[str]:
     """
     Get all dependency file patterns across all languages.
-    
+
     Returns:
         List of dependency file patterns
     """
@@ -283,4 +319,3 @@ def get_all_dependency_file_patterns() -> List[str]:
         if metadata.dependency_files:
             patterns.update(metadata.dependency_files)
     return sorted(list(patterns))
-

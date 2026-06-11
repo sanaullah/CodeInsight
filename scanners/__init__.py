@@ -30,4 +30,3 @@ __all__ = [
     "LanguageDetector",
     "create_project_scanner",
 ]
-
