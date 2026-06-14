@@ -13,11 +13,11 @@ logger = logging.getLogger(__name__)
 
 class ClickHouseHealthCheck(HealthCheck):
     """Health check for ClickHouse client."""
-    
+
     def check_health(self) -> ServiceHealth:
         """Check ClickHouse connection health."""
         start_time = time.time()
-        
+
         try:
             # Try to get client - this may fail if database doesn't exist
             try:
@@ -31,6 +31,7 @@ class ClickHouseHealthCheck(HealthCheck):
                         config = get_db_config().clickhouse
                         # Try connecting to system database for health check
                         from clickhouse_driver import Client as ClickHouseDriverClient
+
                         system_client = ClickHouseDriverClient(
                             host=config.host,
                             port=config.native_port,
@@ -44,7 +45,7 @@ class ClickHouseHealthCheck(HealthCheck):
                         )
                         result = system_client.execute("SELECT 1")
                         system_client.disconnect()
-                        
+
                         response_time = (time.time() - start_time) * 1000
                         return ServiceHealth(
                             status=HealthStatus.DEGRADED,
@@ -52,10 +53,10 @@ class ClickHouseHealthCheck(HealthCheck):
                                 "host": config.host,
                                 "port": config.native_port,
                                 "database": config.database,
-                                "issue": "Database does not exist, but ClickHouse server is reachable"
+                                "issue": "Database does not exist, but ClickHouse server is reachable",
                             },
                             message=f"ClickHouse server is reachable but database '{config.database}' does not exist",
-                            response_time_ms=response_time
+                            response_time_ms=response_time,
                         )
                     except Exception as system_error:
                         # Can't even connect to system database
@@ -63,41 +64,41 @@ class ClickHouseHealthCheck(HealthCheck):
                             status=HealthStatus.UNHEALTHY,
                             details={"error": str(conn_error)},
                             message=f"ClickHouse connection failed: {conn_error}",
-                            response_time_ms=(time.time() - start_time) * 1000
+                            response_time_ms=(time.time() - start_time) * 1000,
                         )
                 else:
                     # Other connection error
                     raise conn_error
-            
+
             # If we got here, client is connected
             result = client.execute("SELECT 1")
-            
+
             if result:
                 response_time = (time.time() - start_time) * 1000
-                
+
                 return ServiceHealth(
                     status=HealthStatus.HEALTHY,
                     details={
                         "host": client.config.host,
                         "port": client.config.native_port,
-                        "database": client.config.database
+                        "database": client.config.database,
                     },
                     message="ClickHouse is healthy",
-                    response_time_ms=response_time
+                    response_time_ms=response_time,
                 )
             else:
                 return ServiceHealth(
                     status=HealthStatus.DEGRADED,
                     details={},
                     message="ClickHouse query returned no result",
-                    response_time_ms=(time.time() - start_time) * 1000
+                    response_time_ms=(time.time() - start_time) * 1000,
                 )
         except ImportError:
             return ServiceHealth(
                 status=HealthStatus.UNKNOWN,
                 details={"error": "clickhouse-driver not installed"},
                 message="ClickHouse driver not available",
-                response_time_ms=(time.time() - start_time) * 1000
+                response_time_ms=(time.time() - start_time) * 1000,
             )
         except Exception as e:
             error_str = str(e)
@@ -107,17 +108,16 @@ class ClickHouseHealthCheck(HealthCheck):
                     status=HealthStatus.DEGRADED,
                     details={"error": error_str},
                     message=f"ClickHouse database does not exist: {error_str}",
-                    response_time_ms=(time.time() - start_time) * 1000
+                    response_time_ms=(time.time() - start_time) * 1000,
                 )
             else:
                 return ServiceHealth(
                     status=HealthStatus.UNHEALTHY,
                     details={"error": error_str},
                     message=f"ClickHouse health check failed: {e}",
-                    response_time_ms=(time.time() - start_time) * 1000
+                    response_time_ms=(time.time() - start_time) * 1000,
                 )
-    
+
     def get_service_name(self) -> str:
         """Get service name."""
         return "ClickHouse"
-
