@@ -204,48 +204,62 @@ Return a JSON object with:
             
             # Extract validation result
             validation_text = llm_result.get("last_response", "")
+            llm_error = llm_result.get("error")
             
-            # Parse JSON validation result
-            validation_result = {
-                "is_valid": True,
-                "confidence": 0.8,
-                "clarity": 0.8,
-                "completeness": 0.8,
-                "relevance": 0.8,
-                "actionability": 0.8,
-                "accuracy": 0.8,
-                "overall_score": 0.8,
-                "feedback": validation_text[:200] if validation_text else "No feedback provided"
-            }
+            if llm_error or not validation_text.strip():
+                validation_result = {
+                    "is_valid": False,
+                    "confidence": 0.0,
+                    "clarity": 0.0,
+                    "completeness": 0.0,
+                    "relevance": 0.0,
+                    "actionability": 0.0,
+                    "accuracy": 0.0,
+                    "overall_score": 0.0,
+                    "feedback": llm_error or "LLM validation returned empty response",
+                }
+            else:
+                # Parse JSON validation result
+                validation_result = {
+                    "is_valid": True,
+                    "confidence": 0.8,
+                    "clarity": 0.8,
+                    "completeness": 0.8,
+                    "relevance": 0.8,
+                    "actionability": 0.8,
+                    "accuracy": 0.8,
+                    "overall_score": 0.8,
+                    "feedback": validation_text[:200],
+                }
             
-            # Try to extract JSON object from response
-            json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', validation_text, re.DOTALL)
-            if json_match:
-                try:
-                    parsed = json.loads(json_match.group(1))
-                    validation_result.update(parsed)
-                    # Calculate overall_score if not provided
-                    if "overall_score" not in parsed or parsed.get("overall_score") is None:
-                        scores = [
-                            parsed.get("clarity", 0.8),
-                            parsed.get("completeness", 0.8),
-                            parsed.get("relevance", 0.8),
-                            parsed.get("actionability", 0.8),
-                            parsed.get("accuracy", 0.8)
-                        ]
-                        validation_result["overall_score"] = sum(scores) / len(scores)
-                except json.JSONDecodeError:
-                    logger.warning(f"Failed to parse validation JSON for {role_name}")
-            
-            # If no code block, try to find JSON object directly
-            if validation_result.get("feedback") == validation_text[:200]:
-                json_obj_match = re.search(r'\{[^{}]*"is_valid"[^{}]*\}', validation_text, re.DOTALL)
-                if json_obj_match:
+            if validation_text.strip():
+                json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', validation_text, re.DOTALL)
+                if json_match:
                     try:
-                        parsed = json.loads(json_obj_match.group(0))
+                        parsed = json.loads(json_match.group(1))
                         validation_result.update(parsed)
+                        # Calculate overall_score if not provided
+                        if "overall_score" not in parsed or parsed.get("overall_score") is None:
+                            scores = [
+                                parsed.get("clarity", 0.8),
+                                parsed.get("completeness", 0.8),
+                                parsed.get("relevance", 0.8),
+                                parsed.get("actionability", 0.8),
+                                parsed.get("accuracy", 0.8)
+                            ]
+                            validation_result["overall_score"] = sum(scores) / len(scores)
                     except json.JSONDecodeError:
-                        pass
+                        logger.warning(f"Failed to parse validation JSON for {role_name}")
+                
+                # If no code block, try to find JSON object directly
+                if validation_result.get("feedback") == validation_text[:200]:
+                    json_obj_match = re.search(r'\{[^{}]*"is_valid"[^{}]*\}', validation_text, re.DOTALL)
+                    if json_obj_match:
+                        try:
+                            parsed = json.loads(json_obj_match.group(0))
+                            validation_result.update(parsed)
+                        except json.JSONDecodeError:
+                            pass
             
             # Add shared validation metadata to validation result
             if shared_validation.warnings or shared_validation.violations:

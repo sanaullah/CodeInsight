@@ -38,7 +38,6 @@ class SwarmAnalysisState(TypedDict):
     # Tool calling and dependency resolution
     enable_tool_calling: NotRequired[bool]  # Default: True
     enable_static_dependency_resolution: NotRequired[bool]  # Default: True
-    max_tool_calls: NotRequired[int]  # Default: 10
     # File selection (new feature)
     enable_dynamic_file_selection: NotRequired[bool]  # Default: False (backward compatible)
     

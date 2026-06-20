@@ -14,7 +14,6 @@ from services.redis_cache import get_cache
 from services.cache_utils import (
     get_cache_key_for_record,
     get_cache_key_for_query,
-    invalidate_related_keys,
 )
 from services.cache_config import get_ttl_for_cache_type
 

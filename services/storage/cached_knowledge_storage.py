@@ -155,7 +155,7 @@ class CachedKnowledgeStorage(CachedStorage):
 
         # Invalidate search caches (pattern delete)
         try:
-            search_pattern = f"{self.service_name}:query:*"
+            search_pattern = f"{self.service_name}:search:*"
             self.cache.delete_pattern(search_pattern)
             logger.debug("Invalidated search caches after save")
         except Exception as e:

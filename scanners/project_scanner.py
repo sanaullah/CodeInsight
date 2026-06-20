@@ -87,10 +87,6 @@ class ProjectScanner:
                 "conda.yml",
             ]
 
-    def _get_dependency_file_patterns(self) -> List[str]:
-        """Get dependency file patterns for all supported languages."""
-        return self._get_dependency_patterns()
-
     # Documentation file patterns
     DOCUMENTATION_FILE_PATTERNS = [
         "README.md",
@@ -357,7 +353,7 @@ class ProjectScanner:
         files: List[FileInfo] = []
 
         # Find all dependency files
-        dependency_patterns = self._get_dependency_file_patterns()
+        dependency_patterns = self._get_dependency_patterns()
         for pattern in dependency_patterns:
             if "*" in pattern:
                 # Handle glob patterns

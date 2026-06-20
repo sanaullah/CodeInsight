@@ -26,7 +26,7 @@ CodeInsight is a comprehensive code analysis platform that uses a **Swarm Analys
 
 - **Workflow-Based Architecture**: Uses LangGraph for orchestration instead of individual agent classes
 - **Dynamic Role Selection**: LLM determines relevant analysis roles based on architecture
-- **Context-Aware Prompts**: Prompts are generated dynamically for each role, not loaded from templates
+- **Context-Aware Prompts**: Prompts are resolved dynamically (Langfuse → Redis → PostgreSQL → LLM generation), not loaded from static templates
 - **Experience Learning**: System learns from past analyses to improve future performance
 - **Unified Scanner Factory**: All components use `create_project_scanner()` for consistent language-agnostic configuration
 - **PostgreSQL + Redis**: All persistent storage uses PostgreSQL with Redis caching layer
@@ -618,17 +618,6 @@ sequenceDiagram
     Graph->>RolesNode: select_roles_node(state)
     RolesNode->>RolesNode: Apply role selection skills
     RolesNode-->>Graph: state with selected_roles
-
-##### Prompt Generation (`prompt_generation/`):
-- **Parallel Execution**: Uses `dispatch_prompt_generation_node` to fan out to `generate_single_prompt_node` for each selected role.
-- **Workflow**:
-    1.  **Check Langfuse**: Queries Langfuse for existing prompts matching `role`, `architecture_hash`, and `file_hash`.
-    2.  **Check Cache**: Checks Redis/In-memory cache for matching prompts.
-    3.  **Check CodeLumen DB (Fallback)**: Checks local `codelumen` database for prompts matching `architecture_hash`.
-    4.  **Generation (LLM)**: If all checks fail, generates a new prompt using `llm_node`.
-        *   **Validation (Step 4 Only)**: Newly generated prompts are validated by `PromptValidator` (checks strictness, references). Cached/stored prompts bypass validation for performance.
-        *   **Filtering**: Removes hardcoded technologies via `PromptTechnologyFilter`.
-- **Output**: Aggregates generated prompts and stores IDs for observability.
     
     Graph->>DispatchPrompts: dispatch_prompt_generation_node(state)
     DispatchPrompts->>GenPrompt: Send(role1)
@@ -685,6 +674,18 @@ sequenceDiagram
     Graph-->>Orchestrator: final_state
     Orchestrator-->>User: result dictionary
 ```
+
+##### Prompt Generation (`prompt_generation/`)
+
+- **Parallel Execution**: Uses `dispatch_prompt_generation_node` to fan out to `generate_single_prompt_node` for each selected role.
+- **Workflow**:
+    1. **Check Langfuse**: Queries Langfuse for existing prompts matching `role`, `architecture_hash`, and `file_hash`.
+    2. **Check Cache**: Checks Redis/in-memory cache for matching prompts.
+    3. **Check CodeLumen DB (fallback)**: Checks local `codelumen` database for prompts matching `architecture_hash`.
+    4. **Generation (LLM)**: If all checks fail, generates a new prompt using `llm_node`.
+        - **Technology filtering**: Removes hardcoded technologies via `PromptTechnologyFilter` (applied to newly generated prompts).
+- **Prompt validation**: All prompts in `generated_prompts` are validated in parallel via `validate_single_prompt_node` (LLM evaluation plus `PromptValidator` checks).
+- **Output**: Aggregates generated prompts and stores IDs for observability.
 
 ---
 
@@ -867,6 +868,7 @@ graph TB
 - `services/storage/cached_swarm_skillbook_storage.py`
 - `services/storage/cached_prompt_storage.py`
 - `services/storage/cached_architecture_model_storage.py`
+- `services/storage/cached_settings_storage.py`
 
 #### Utility Layer
 
@@ -991,13 +993,14 @@ Examples:
 - `CodeLumen:experience:{experience_id}`
 - `CodeLumen:knowledge:{knowledge_id}`
 - `CodeLumen:prompt:{prompt_id}`
+- `CodeLumen:swarm_skillbook:skill:{skill_id}`
 
 #### TTL Values
 
 - Scan history: 1 hour
-- Experiences: 1 hour
-- Knowledge base: 6 hours (24 hours for architecture models)
-- Swarm skillbook: 12 hours
+- Experiences: 6 hours
+- Knowledge base: 6 hours (architecture models: 24 hours)
+- Swarm skillbook: 1 hour
 - Prompts: 12 hours
 
 #### Cache Invalidation

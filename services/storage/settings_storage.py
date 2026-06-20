@@ -331,19 +331,6 @@ class SettingsStorage(BaseStorage):
 
     def validate_data(self, data: Dict[str, Any]) -> tuple[bool, Optional[str]]:
         """
-        Transaction context manager.
-
-        Usage:
-            with storage.transaction():
-                storage.save(data1)
-                storage.save(data2)
-        """
-        with get_db_connection(self.db_identifier, read_only=False) as conn:
-            with transaction(conn):
-                yield
-
-    def validate_data(self, data: Dict[str, Any]) -> tuple[bool, Optional[str]]:
-        """
         Validate data before saving.
 
         Args:

@@ -371,6 +371,10 @@ async def generate_single_prompt_node(state: SwarmAnalysisState, config: Optiona
                 
                 # Extract prompt
                 prompt = llm_result.get("last_response", "")
+                if llm_result.get("error") or not prompt.strip():
+                    raise ValueError(
+                        llm_result.get("error") or "LLM returned empty prompt response"
+                    )
             except Exception as llm_error:
                 logger.warning(f"LLM generation failed for {role_name}: {llm_error}, using fallback")
                 # Use fallback prompt

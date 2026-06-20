@@ -167,7 +167,7 @@ class ArchitectureModelStorage(BaseStorage):
                 model_dict = (
                     model.__dict__ if hasattr(model, "__dict__") else dict(model)
                 )
-            except:
+            except (TypeError, ValueError):
                 model_dict = {"model": str(model)}
         else:
             model_dict = model
