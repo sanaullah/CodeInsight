@@ -1,34 +1,39 @@
-"""Workflows package for LangGraph-based workflow."""
+"""Native durable workflow primitives with lazy legacy compatibility."""
 
-"""
-Workflows module for building stateful, multi-step agent workflow.
+from __future__ import annotations
 
-This module provides utilities for creating LangGraph workflows with integration
-to LiteLLM and Langfuse observability.
-"""
+from importlib import import_module
+from typing import Any
 
-from .graph_builder import GraphBuilder, create_graph
-from .state import StateSchema, create_state_schema
-from .nodes import llm_node, tool_node, conditional_node
-from .checkpoints import get_checkpoint_adapter, setup_checkpoints
-from .streaming import stream_graph, format_stream_event
-from .human_in_loop import human_approval_node, human_feedback_node
-from .integration import setup_langfuse_callbacks
+from .task_scheduler import NativeTaskScheduler, TaskContext, TaskResult
 
-__version__ = "1.0.0"
-__all__ = [
-    "GraphBuilder",
-    "create_graph",
-    "StateSchema",
-    "create_state_schema",
-    "llm_node",
-    "tool_node",
-    "conditional_node",
-    "get_checkpoint_adapter",
-    "setup_checkpoints",
-    "stream_graph",
-    "format_stream_event",
-    "human_approval_node",
-    "human_feedback_node",
-    "setup_langfuse_callbacks",
-]
+_LEGACY_EXPORTS = {
+    "GraphBuilder": ("workflow.graph_builder", "GraphBuilder"),
+    "create_graph": ("workflow.graph_builder", "create_graph"),
+    "StateSchema": ("workflow.state", "StateSchema"),
+    "create_state_schema": ("workflow.state", "create_state_schema"),
+    "llm_node": ("workflow.nodes", "llm_node"),
+    "tool_node": ("workflow.nodes", "tool_node"),
+    "conditional_node": ("workflow.nodes", "conditional_node"),
+    "get_checkpoint_adapter": ("workflow.checkpoints", "get_checkpoint_adapter"),
+    "setup_checkpoints": ("workflow.checkpoints", "setup_checkpoints"),
+    "stream_graph": ("workflow.streaming", "stream_graph"),
+    "format_stream_event": ("workflow.streaming", "format_stream_event"),
+    "human_approval_node": ("workflow.human_in_loop", "human_approval_node"),
+    "human_feedback_node": ("workflow.human_in_loop", "human_feedback_node"),
+    "setup_langfuse_callbacks": ("workflow.integration", "setup_langfuse_callbacks"),
+}
+
+__all__ = ["NativeTaskScheduler", "TaskContext", "TaskResult", *_LEGACY_EXPORTS]
+
+
+def __getattr__(name: str) -> Any:
+    """Load legacy LangGraph exports only when an old caller requests one."""
+
+    target = _LEGACY_EXPORTS.get(name)
+    if target is None:
+        raise AttributeError(name)
+    module_name, attribute_name = target
+    value = getattr(import_module(module_name), attribute_name)
+    globals()[name] = value
+    return value

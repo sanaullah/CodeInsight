@@ -12,7 +12,7 @@ import threading
 import time
 import weakref
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
@@ -23,7 +23,7 @@ _ACTIVE_STATUSES = ("queued", "running")
 
 
 def _utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class SqliteRunLedger:
@@ -57,7 +57,7 @@ class SqliteRunLedger:
                 self._finalizer()
                 self._closed = True
 
-    def __enter__(self) -> "SqliteRunLedger":
+    def __enter__(self) -> SqliteRunLedger:
         return self
 
     def __exit__(self, *_exc_info: object) -> None:
@@ -85,6 +85,11 @@ class SqliteRunLedger:
                         raise
                     time.sleep(0.005 * (2**attempt))
         raise RuntimeError("unreachable database retry state")
+
+    def write_transaction(self, operation: Callable[[sqlite3.Connection], _T]) -> _T:
+        """Run a repository operation through the ledger's serialized writer."""
+
+        return self._write(operation)
 
     @staticmethod
     def _append_event(
