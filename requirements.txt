@@ -1,4 +1,8 @@
-litellm>=1.81.0
+# Deprecated compatibility input. Use `uv sync --locked`; pyproject.toml and
+# uv.lock are the canonical dependency definitions.
+fastapi>=0.139.2,<1
+uvicorn[standard]>=0.51,<1
+litellm>=1.91.4,<1.92
 langfuse>=3.12.0
 pydantic>=2.0.0
 pyyaml>=6.0

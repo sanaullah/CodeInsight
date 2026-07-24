@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="CodeInsight architecture-aware code review workspace"
+    />
+    <title>CodeInsight Review Workspace</title>
+    <link rel="stylesheet" href="/assets/app.css" />
+    <script src="/assets/app.js" defer></script>
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="CodeInsight home">
+        <span class="brand-mark">CI</span>
+        <span>
+          <strong>CodeInsight</strong>
+          <small>Review workspace</small>
+        </span>
+      </a>
+      <div class="api-state" id="api-state" aria-live="polite">
+        <span class="pulse"></span>
+        Connecting
+      </div>
+    </header>
+
+    <main>
+      <section class="intro">
+        <div>
+          <p class="eyebrow">Architecture-aware analysis</p>
+          <h1>Turn a codebase into a focused review.</h1>
+          <p class="intro-copy">
+            Set the review goal, bound the analysis, and follow every stage from
+            repository scan to evidence-backed synthesis.
+          </p>
+        </div>
+        <div class="support-legend" id="support-legend">
+          <div><span class="legend-dot parsed"></span><strong>1</strong><small>parsed</small></div>
+          <div><span class="legend-dot aware"></span><strong>2</strong><small>dependency-aware</small></div>
+          <div><span class="legend-dot discovery"></span><strong>30</strong><small>discoverable</small></div>
+        </div>
+      </section>
+
+      <section class="workspace">
+        <form class="panel review-form" id="review-form">
+          <div class="panel-heading">
+            <div>
+              <p class="step-label">New review</p>
+              <h2>Define the analysis</h2>
+            </div>
+            <span class="safe-default">Read-only</span>
+          </div>
+
+          <label>
+            <span>Project directory</span>
+            <input
+              id="project-path"
+              name="project_path"
+              type="text"
+              autocomplete="off"
+              required
+              placeholder="C:\work\my-project"
+            />
+            <small>A directory accessible to the CodeInsight server.</small>
+          </label>
+
+          <label>
+            <span>Review goal</span>
+            <textarea
+              id="goal"
+              name="goal"
+              rows="4"
+              placeholder="Focus on authentication boundaries, unsafe data flow, and missing tests."
+            ></textarea>
+          </label>
+
+          <div class="field-grid">
+            <label>
+              <span>Model</span>
+              <input
+                id="model-name"
+                name="model_name"
+                type="text"
+                autocomplete="off"
+                placeholder="Use configured default"
+              />
+            </label>
+            <label>
+              <span>Specialists</span>
+              <select id="max-agents" name="max_agents">
+                <option value="2">2 — quick</option>
+                <option value="4" selected>4 — balanced</option>
+                <option value="6">6 — broad</option>
+                <option value="8">8 — deep</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="option-row">
+            <label class="switch-line">
+              <input id="dynamic-files" type="checkbox" checked />
+              <span class="switch"></span>
+              <span>
+                <strong>Focused file selection</strong>
+                <small>Let each specialist request relevant files.</small>
+              </span>
+            </label>
+            <label class="switch-line">
+              <input id="tool-calling" type="checkbox" />
+              <span class="switch"></span>
+              <span>
+                <strong>Read-only file tools</strong>
+                <small>Off by default while safeguards mature.</small>
+              </span>
+            </label>
+          </div>
+
+          <details>
+            <summary>Analysis limits</summary>
+            <div class="field-grid detail-grid">
+              <label>
+                <span>Chunk strategy</span>
+                <select id="chunking-strategy">
+                  <option value="AGGRESSIVE">Aggressive — smaller chunks</option>
+                  <option value="STANDARD" selected>Standard — balanced</option>
+                  <option value="NONE">No chunking</option>
+                </select>
+              </label>
+              <label>
+                <span>Tokens per chunk</span>
+                <input id="max-tokens" type="number" min="4000" max="200000" value="50000" />
+              </label>
+            </div>
+          </details>
+
+          <div class="form-message" id="form-message" role="alert"></div>
+          <button class="primary-action" id="start-review" type="submit">
+            <span>Start code review</span>
+            <span aria-hidden="true">→</span>
+          </button>
+        </form>
+
+        <section class="panel run-panel" aria-live="polite">
+          <div class="panel-heading">
+            <div>
+              <p class="step-label">Current run</p>
+              <h2 id="run-title">Ready when you are</h2>
+            </div>
+            <span class="status-badge idle" id="status-badge">Idle</span>
+          </div>
+
+          <div class="empty-state" id="empty-state">
+            <div class="orbit">
+              <span></span><span></span><span></span>
+            </div>
+            <h3>Your review timeline will appear here.</h3>
+            <p>
+              CodeInsight will surface scanning, architecture, specialist, and
+              synthesis events as the backend produces them.
+            </p>
+          </div>
+
+          <div class="run-content hidden" id="run-content">
+            <div class="run-meta">
+              <div><small>Run ID</small><code id="run-id">—</code></div>
+              <div><small>Elapsed</small><strong id="elapsed">0s</strong></div>
+              <button class="quiet-button hidden" id="cancel-run" type="button">Cancel</button>
+            </div>
+            <ol class="timeline" id="timeline"></ol>
+            <div class="result-card hidden" id="result-card">
+              <div class="result-heading">
+                <div>
+                  <p class="step-label">Synthesis</p>
+                  <h3>Review report</h3>
+                </div>
+                <button class="quiet-button" id="copy-report" type="button">Copy</button>
+              </div>
+              <pre id="report"></pre>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section class="recent-section">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Session history</p>
+            <h2>Recent reviews</h2>
+          </div>
+          <button class="quiet-button" id="refresh-runs" type="button">Refresh</button>
+        </div>
+        <div class="recent-grid" id="recent-runs">
+          <p class="muted">No review runs in this API process yet.</p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>CodeInsight modernization preview</span>
+      <a href="/api/docs">API documentation</a>
+      <span>Streamlit remains available during migration</span>
+    </footer>
+  </body>
+</html>

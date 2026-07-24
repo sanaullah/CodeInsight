@@ -57,108 +57,77 @@ Learn how to build a scalable, modular agent system in under 15 minutes. This wa
 
 ---
 
-## 🛠️ Supported Languages
+## 🛠️ Language coverage
 
-CodeInsight supports analysis for a wide range of programming languages, including:
-
-* **Core**: Python, JavaScript, TypeScript, Java, C/C++, C#
-* **Systems**: Go, Rust, Swift, Kotlin
-* **Web**: HTML, CSS, PHP, Ruby
-* **Scripting**: Shell, PowerShell, Lua, Perl
-* **Data/Config**: SQL, YAML, JSON, XML, Markdown, R, MATLAB
-* **Other**: BoxLang, ColdFusion, Dart, Scala
+CodeInsight recognizes 30 language families, but analysis depth is not yet
+uniform. Python has AST parsing; JavaScript and TypeScript have dependency
+heuristics; the remaining languages currently have discovery and text-level
+analysis only. The modernization roadmap defines the path to native parsers and
+analyzers without overstating current support.
 
 ## Getting Started
 
 ### Prerequisites
 
-* Python 3.10 or higher
+* Python 3.12 or 3.13
+* [uv](https://docs.astral.sh/uv/)
 * Docker (for running Langfuse locally)
 
-### Installation
+### Canonical installation with uv
 
-You can set up CodeInsight using the provided automated scripts (recommended) or follow the manual steps.
-
-#### **Option 1: Automated Setup (Recommended)**
-
-The setup scripts automatically create a virtual environment, install dependencies, prepare configuration files, start Langfuse services (via Docker), and initialize the database.
-
-1. **Run Setup Script:**
-    **On Windows:**
-    * **Double-click** `setup.bat` in the project root.
-    * *Or run via PowerShell:*
-
-      ```powershell
-      powershell.exe -ExecutionPolicy Bypass -File "setup.ps1"
-      ```
-
-    **On Linux/macOS:**
-
-    ```bash
-    python3 setup.py
-    ```
-
-2. **Configure Keys:**
-    Once the script finishes, it will have created a `.env` file for you. Open it and add your required keys:
-    * `OPENAI_API_KEY`: Your model provider API key.
-    * `LANGFUSE_PUBLIC_KEY` & `LANGFUSE_SECRET_KEY`: (Optional) For observability.
-
----
-
-#### **Option 2: Manual Setup (Fallback)**
-
-If the automated scripts fail or if you prefer a custom setup, follow these steps:
-
-1. **Create & Activate Virtual Environment**:
-
-    ```bash
-    python -m venv .venv
-    # Windows:
-    .venv\Scripts\activate
-    # Linux/macOS:
-    source .venv/bin/activate
-    ```
-
-2. **Install Dependencies**:
-
-    ```bash
-    pip install -r requirements.txt
-    ```
-
-3. **Prepare Configuration Files**:
-    Copy the example files:
-
-    ```bash
-    cp .env.example .env
-    cp config.yaml.example config.yaml
-    ```
-
-4. **Configure Keys**:
-    Edit `.env` and add your required keys:
-    * `OPENAI_API_KEY` (Required for LLM)
-    * `LANGFUSE_PUBLIC_KEY` & `LANGFUSE_SECRET_KEY` (Optional)
-
-5. **Start Langfuse (Docker)**:
-
-    ```bash
-    docker compose -f langfuse/docker-compose.yml up -d
-    ```
-
-6. **Initialize Database**:
-
-    ```bash
-    python scripts/init_database.py
-    ```
-
----
-
-### Starting the Application
-
-Once setup is complete, ensure your virtual environment is active and run:
+`uv` now owns Python selection, dependency resolution, the environment, and the
+lockfile:
 
 ```bash
-streamlit run ui/app.py
+uv sync --locked
 ```
+
+Copy `.env.example` to `.env`, then set `OPENAI_API_KEY`, `DEFAULT_MODEL`, and
+optional Langfuse credentials. `config.yaml` is already tracked.
+
+Optional local infrastructure and application storage:
+
+```bash
+docker compose -f langfuse/docker-compose.yml up -d
+uv run python scripts/init_database.py
+```
+
+### Start the modern web application
+
+FastAPI hosts both the API and the new frontend:
+
+```bash
+uv run uvicorn api.app:app --host 127.0.0.1 --port 8000 --reload
+```
+
+Open `http://127.0.0.1:8000`; API documentation is at `/api/docs`. The
+frontend submits real jobs to the existing LangGraph analysis engine and shows
+their event timeline and synthesized report.
+
+### Streamlit migration fallback
+
+The original experience remains available while the new frontend reaches
+feature parity:
+
+```bash
+uv run streamlit run ui/app.py
+```
+
+`requirements.txt` and the old setup scripts remain temporarily as migration
+references, but are no longer the supported installation path.
+
+### Tests
+
+```bash
+uv run pytest
+```
+
+## Modernization plan
+
+[MODERNIZATION_AUDIT.md](MODERNIZATION_AUDIT.md) is the single self-contained
+record of audit findings, target architecture, agent and polyglot design,
+security guardrails, verified dependency findings, phased roadmap, and
+validation strategy.
 
 ## Acknowledgments
 
