@@ -1,37 +1,9 @@
-"""
-Agent collaboration models and utilities.
-"""
+"""Compatibility imports for the relocated :mod:`analysis.agents` package."""
 
-from .collaboration_models import (
-    Knowledge,
-    KnowledgeType,
-    CoordinationRequest,
-    CoordinationType,
-    Conflict,
-    ConflictType,
-    ConflictSeverity,
-    ConflictResolution,
-    ConflictResolutionStrategy,
-)
+from pathlib import Path
 
-__all__ = [
-    "Knowledge",
-    "KnowledgeType",
-    "CoordinationRequest",
-    "CoordinationType",
-    "Conflict",
-    "ConflictType",
-    "ConflictSeverity",
-    "ConflictResolution",
-    "ConflictResolutionStrategy",
-]
+from analysis import agents as _target
+from analysis.agents import *
 
-
-
-
-
-
-
-
-
-
+__all__ = _target.__all__
+__path__ = [str(Path(__file__).resolve().parent), *list(_target.__path__)]

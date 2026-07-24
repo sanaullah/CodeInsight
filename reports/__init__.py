@@ -1,8 +1,9 @@
-"""
-Report generation utilities for CodeInsight.
-"""
+"""Compatibility imports for :mod:`analysis.reports`."""
 
-from .report_generator import generate_markdown_report, generate_json_report
+from pathlib import Path
 
-__all__ = ["generate_markdown_report", "generate_json_report"]
+from analysis import reports as _target
+from analysis.reports import *
 
+__all__ = _target.__all__
+__path__ = [str(Path(__file__).resolve().parent), *list(_target.__path__)]

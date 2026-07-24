@@ -1,16 +1,9 @@
-"""
-Chunking system for grouping files into token-based chunks.
+"""Compatibility imports for :mod:`analysis.chunking`."""
 
-Provides ChunkManager for managing file chunking with different strategies.
-"""
+from pathlib import Path
 
-from .chunk_manager import ChunkManager, Chunk, FileChunk, ChunkingStrategy
-from .token_counter import TokenCounter
+from analysis import chunking as _target
+from analysis.chunking import *
 
-__all__ = [
-    "ChunkManager",
-    "Chunk",
-    "FileChunk",
-    "ChunkingStrategy",
-    "TokenCounter",
-]
+__all__ = _target.__all__
+__path__ = [str(Path(__file__).resolve().parent), *list(_target.__path__)]

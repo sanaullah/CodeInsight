@@ -1,35 +1,10 @@
-"""Workflows package for LangGraph-based workflows."""
+"""Compatibility imports for the relocated :mod:`workflow` package."""
 
-"""
-Workflows module for building stateful, multi-step agent workflows.
+from pathlib import Path
 
-This module provides utilities for creating LangGraph workflows with integration
-to LiteLLM and Langfuse observability.
-"""
+import workflow as _target
+from workflow import *
 
-from .graph_builder import GraphBuilder, create_graph
-from .state import StateSchema, create_state_schema
-from .nodes import llm_node, tool_node, conditional_node
-from .checkpoints import get_checkpoint_adapter, setup_checkpoints
-from .streaming import stream_graph, format_stream_event
-from .human_in_loop import human_approval_node, human_feedback_node
-from .integration import setup_langfuse_callbacks
-
-__version__ = "1.0.0"
-__all__ = [
-    "GraphBuilder",
-    "create_graph",
-    "StateSchema",
-    "create_state_schema",
-    "llm_node",
-    "tool_node",
-    "conditional_node",
-    "get_checkpoint_adapter",
-    "setup_checkpoints",
-    "stream_graph",
-    "format_stream_event",
-    "human_approval_node",
-    "human_feedback_node",
-    "setup_langfuse_callbacks",
-]
-
+__all__ = _target.__all__
+__version__ = _target.__version__
+__path__ = [str(Path(__file__).resolve().parent), *list(_target.__path__)]

@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from api.analysis_service import AnalysisService, EventSink
+from application.analysis_service import AnalysisService, EventSink
 from api.app import create_app
 from api.models import AnalysisRequest
 

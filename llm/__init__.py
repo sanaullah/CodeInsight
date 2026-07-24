@@ -1,13 +1,10 @@
-"""
-LLM Framework - LiteLLM + Langfuse Integration
+"""Compatibility imports for :mod:`infrastructure.llm`."""
 
-A minimal framework for using LiteLLM with Langfuse observability.
-"""
+from pathlib import Path
 
-from .config import ConfigManager, ensure_env_ready
+from infrastructure import llm as _target
+from infrastructure.llm import *
 
-__version__ = "2.0.0"
-__all__ = [
-    "ConfigManager",
-    "ensure_env_ready",
-]
+__all__ = _target.__all__
+__version__ = _target.__version__
+__path__ = [str(Path(__file__).resolve().parent), *list(_target.__path__)]

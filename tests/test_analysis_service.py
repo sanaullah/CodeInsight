@@ -6,8 +6,13 @@ from typing import Any
 
 import pytest
 
-from api.analysis_service import AnalysisService, EventSink
+from application.analysis_service import AnalysisService, EventSink
+from api.analysis_service import AnalysisService as LegacyAnalysisService
 from api.models import AnalysisRequest, AnalysisStatus
+
+
+def test_legacy_analysis_service_import_is_compatible() -> None:
+    assert LegacyAnalysisService is AnalysisService
 
 
 class FakeExecutor:

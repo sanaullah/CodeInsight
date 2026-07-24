@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from api.analysis_service import AnalysisService
+from application.analysis_service import AnalysisService
 from api.config import ApiSettings
 from api.models import (
     AnalysisAccepted,
@@ -19,15 +19,15 @@ from api.models import (
     HealthResponse,
     LanguageCapability,
 )
-from utils.config.env_loader import load_env
-from utils.version import VERSION_STRING
+from infrastructure.utils.config.env_loader import load_env
+from infrastructure.utils.version import VERSION_STRING
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_ROOT = PROJECT_ROOT / "web"
 
 
 def _language_capabilities() -> list[LanguageCapability]:
-    from scanners.language_config import (
+    from indexing.scanners.language_config import (
         LANGUAGE_EXTENSIONS,
         Language,
         get_language_metadata,

@@ -1,5 +1,1 @@
-"""
-Scripts package for CodeLumen.
-
-Contains database initialization, migration, and validation scripts.
-"""
+"""Compatibility package for relocated infrastructure scripts."""

@@ -88,8 +88,8 @@ optional Langfuse credentials. `config.yaml` is already tracked.
 Optional local infrastructure and application storage:
 
 ```bash
-docker compose -f langfuse/docker-compose.yml up -d
-uv run python scripts/init_database.py
+docker compose -f infrastructure/observability/langfuse_stack/docker-compose.yml up -d
+uv run python infrastructure/scripts/init_database.py
 ```
 
 ### Start CodeInsight
@@ -113,6 +113,27 @@ Python command so the checked-in lockfile remains authoritative.
 ```bash
 uv run pytest
 ```
+
+## Responsibility-based package layout
+
+The structural foundation separates product responsibilities while preserving
+the existing runtime behavior:
+
+| Package | Responsibility |
+| --- | --- |
+| `api/` | FastAPI routes, request/response schemas, and web delivery |
+| `application/` | Analysis run coordination and application use cases |
+| `domain/` | Framework-neutral architecture, collaboration, experience, and skill models |
+| `indexing/` | Repository scanning and dependency discovery |
+| `analysis/` | Specialist agents, prompts, chunking, and report generation |
+| `workflow/` | Existing LangGraph orchestration and workflow state |
+| `infrastructure/` | LLM, persistence, configuration, utilities, scripts, and optional Langfuse services |
+| `web/` | Browser UI assets |
+| `tests/` | API and application behavior tests |
+
+Legacy top-level import packages remain as thin compatibility adapters during
+the migration. New internal code should import from the responsibility-based
+packages directly.
 
 ## Modernization plan
 

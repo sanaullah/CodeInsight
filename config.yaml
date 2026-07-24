@@ -254,7 +254,7 @@ langfuse:
     # model_pricing:
     #   "qwen/qwen3-coder": 0.0001  # per 1K tokens (example)
   docker:  # Docker Compose service management
-    compose_file: langfuse/docker-compose.yml  # Path to docker-compose.yml file
+    compose_file: infrastructure/observability/langfuse_stack/docker-compose.yml
     services: []  # Optional: specific services to manage (empty = all services)
 
 # Workflows Configuration (optional)
