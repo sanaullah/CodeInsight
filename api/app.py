@@ -9,7 +9,6 @@ from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from application.analysis_service import AnalysisService
 from api.config import ApiSettings
 from api.models import (
     AnalysisAccepted,
@@ -19,6 +18,7 @@ from api.models import (
     HealthResponse,
     LanguageCapability,
 )
+from application.analysis_service import AnalysisService
 from infrastructure.utils.config.env_loader import load_env
 from infrastructure.utils.version import VERSION_STRING
 
@@ -60,12 +60,14 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
     load_env()
     settings = ApiSettings.from_environment()
     analysis_service = service or AnalysisService(
+        database_path=settings.database_path,
         max_concurrent=settings.max_concurrent_analyses,
         event_history_limit=settings.event_history_limit,
     )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        await analysis_service.start()
         yield
         await analysis_service.close()
 

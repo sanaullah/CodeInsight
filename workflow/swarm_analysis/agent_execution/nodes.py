@@ -136,6 +136,11 @@ async def _execute_with_tool_calling(
     # Initialize safety guards
     iteration = 0
     previous_iterations = []  # Track last N iterations for duplicate detection
+    llm_result: Dict[str, Any] = {
+        "last_response": "",
+        "tool_calls": [],
+        "error": "tool loop ended before a model response was available",
+    }
 
     while True:
         iteration += 1
@@ -176,56 +181,68 @@ async def _execute_with_tool_calling(
                 f"LLM call timed out after {llm_call_timeout}s "
                 f"(iteration: {iteration}, tool calls made: {tool_calls_made}/{max_tool_calls})"
             )
-            # Break loop on timeout - don't continue with partial result
+            llm_result = {
+                "last_response": "",
+                "tool_calls": [],
+                "error": f"model call timed out after {llm_call_timeout}s",
+            }
             break
         except Exception as e:
             logger.error(f"LLM call failed: {e} (iteration: {iteration})")
+            llm_result = {
+                "last_response": "",
+                "tool_calls": [],
+                "error": str(e),
+            }
             break
 
         # Check for tool calls
         tool_calls = llm_result.get("tool_calls", [])
 
+        # A response without tool calls is the model's final answer. Returning here
+        # is the normal termination path; safety guards only contain malformed or
+        # repetitive tool-use behavior.
+        if not tool_calls:
+            return llm_result
+
         # Duplicate detection: Create signature for this iteration
-        if tool_calls:
-            # Normalize tool call arguments for comparison
-            iteration_signature = {
-                "tool_calls": [
-                    {
-                        "name": tc.get("function", {}).get("name")
+        # Normalize tool call arguments for comparison
+        iteration_signature = {
+            "tool_calls": [
+                {
+                    "name": tc.get("function", {}).get("name")
+                    if isinstance(tc.get("function"), dict)
+                    else None,
+                    "arguments": _normalize_tool_arguments(
+                        tc.get("function", {}).get("arguments")
                         if isinstance(tc.get("function"), dict)
-                        else None,
-                        "arguments": _normalize_tool_arguments(
-                            tc.get("function", {}).get("arguments")
-                            if isinstance(tc.get("function"), dict)
-                            else None
-                        ),
-                    }
-                    for tc in tool_calls
-                ]
-            }
+                        else None
+                    ),
+                }
+                for tc in tool_calls
+            ]
+        }
 
-            # Check for duplicates in recent iterations
-            if len(previous_iterations) >= max_duplicate_iterations:
-                # Check if last N iterations are identical
-                recent_iterations = previous_iterations[-max_duplicate_iterations:]
-                if all(prev == iteration_signature for prev in recent_iterations):
-                    logger.warning(
-                        f"Tool call loop terminated: detected {max_duplicate_iterations} "
-                        f"identical iterations (likely stuck in loop). "
-                        f"Iteration: {iteration}, tool calls made: {tool_calls_made}/{max_tool_calls}"
-                    )
-                    break
+        # Check for duplicates in recent iterations
+        if len(previous_iterations) >= max_duplicate_iterations:
+            # Check if last N iterations are identical
+            recent_iterations = previous_iterations[-max_duplicate_iterations:]
+            if all(prev == iteration_signature for prev in recent_iterations):
+                logger.warning(
+                    f"Tool call loop terminated: detected {max_duplicate_iterations} "
+                    f"identical iterations (likely stuck in loop). "
+                    f"Iteration: {iteration}, tool calls made: {tool_calls_made}/{max_tool_calls}"
+                )
+                break
 
-            # Store this iteration's signature
-            previous_iterations.append(iteration_signature)
-            # Keep only last max_duplicate_iterations + 1 for efficiency
-            if len(previous_iterations) > max_duplicate_iterations + 1:
-                previous_iterations.pop(0)
+        # Store this iteration's signature
+        previous_iterations.append(iteration_signature)
+        # Keep only last max_duplicate_iterations + 1 for efficiency
+        if len(previous_iterations) > max_duplicate_iterations + 1:
+            previous_iterations.pop(0)
 
-            # No tool calls or limit reached - return final result
-            if tool_calls_made >= max_tool_calls:
-                logger.warning(f"Tool call limit ({max_tool_calls}) reached for agent")
-            # return llm_result  # FIXED: This prevented tool execution!
+        if tool_calls_made >= max_tool_calls:
+            logger.warning(f"Tool call limit ({max_tool_calls}) reached for agent")
 
         # Execute tool calls
         tool_results = []
@@ -390,9 +407,6 @@ async def _execute_with_tool_calling(
             f"Tool calls executed, continuing analysis (calls made: {tool_calls_made}/{max_tool_calls})"
         )
 
-    # This should never be reached, but just in case
-    # Cleanup MCP client (Removed)
-    pass
     return llm_result
 
 
@@ -469,7 +483,7 @@ def spawn_agents_node(state: SwarmAnalysisState) -> SwarmAnalysisState:
                 "prompt": prompt,
                 "agent_id": f"swarm_agent_{role_name.lower().replace(' ', '_')}",
             }
-            analysis.agents.append(agent_info)
+            agents.append(agent_info)
 
 
         # Update state

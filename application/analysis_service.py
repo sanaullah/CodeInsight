@@ -1,22 +1,17 @@
-"""In-process analysis run coordination behind a stable API boundary."""
+"""Durable analysis run coordination behind the HTTP boundary."""
 
 from __future__ import annotations
 
 import asyncio
-from collections import deque
-from collections.abc import Awaitable, Callable
-from copy import deepcopy
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
-from api.models import (
-    AnalysisEvent,
-    AnalysisRequest,
-    AnalysisRun,
-    AnalysisStatus,
-    utc_now,
-)
+from api.config import default_database_path
+from api.models import AnalysisRequest, AnalysisRun
+from infrastructure.db.database import checkpoint_database
+from infrastructure.db.run_ledger import SqliteRunLedger
 
 EventSink = Callable[[str, dict[str, Any]], None]
 
@@ -28,13 +23,11 @@ class AnalysisExecutor(Protocol):
 
 
 class SwarmAnalysisExecutor:
-    """Adapter from the HTTP boundary to the existing LangGraph orchestrator."""
+    """Temporary adapter to the legacy engine during native-workflow migration."""
 
     async def execute(
         self, request: AnalysisRequest, event_sink: EventSink
     ) -> dict[str, Any]:
-        # Lazy import keeps API health, capabilities and the frontend available even
-        # when optional model or observability configuration is incomplete.
         from analysis.agents.swarm_analysis_orchestrator import SwarmAnalysisOrchestrator
 
         orchestrator = SwarmAnalysisOrchestrator(
@@ -60,12 +53,13 @@ class SwarmAnalysisExecutor:
 
 
 class AnalysisService:
-    """Owns bounded run state while persistence is introduced in a later phase."""
+    """Runs bounded work while SQLite remains the authoritative lifecycle state."""
 
     def __init__(
         self,
         executor: AnalysisExecutor | None = None,
         *,
+        database_path: str | Path | None = None,
         max_concurrent: int = 2,
         event_history_limit: int = 200,
     ) -> None:
@@ -74,130 +68,136 @@ class AnalysisService:
         if event_history_limit < 1:
             raise ValueError("event_history_limit must be greater than zero")
         self.executor = executor or SwarmAnalysisExecutor()
+        self.database_path = Path(database_path or default_database_path()).resolve()
         self.max_concurrent = max_concurrent
         self.event_history_limit = event_history_limit
+        self._ledger: SqliteRunLedger | None = None
         self._semaphore = asyncio.Semaphore(max_concurrent)
-        self._runs: dict[str, AnalysisRun] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
-        self._lock = asyncio.Lock()
+        self._task_lock = asyncio.Lock()
+        self._start_lock = asyncio.Lock()
+        self._started = False
+        self._closing = False
+
+    def _get_ledger(self) -> SqliteRunLedger:
+        if self._ledger is None:
+            self._ledger = SqliteRunLedger(
+                self.database_path,
+                event_history_limit=self.event_history_limit,
+            )
+        return self._ledger
 
     @property
     def active_count(self) -> int:
-        return sum(
-            run.status in {AnalysisStatus.QUEUED, AnalysisStatus.RUNNING}
-            for run in self._runs.values()
-        )
+        return self._get_ledger().count_active()
+
+    async def start(self) -> int:
+        """Initialize storage, recover interrupted work, and resume queued runs."""
+
+        async with self._start_lock:
+            if self._started:
+                return 0
+            self._closing = False
+            ledger = self._get_ledger()
+            recovered = ledger.recover_interrupted()
+            self._started = True
+            for run_id in ledger.list_queued_run_ids():
+                await self._schedule(run_id)
+            return recovered
 
     async def submit(self, request: AnalysisRequest) -> AnalysisRun:
+        await self.start()
         normalized_request = request.model_copy(
             update={"project_path": self._resolve_project_path(request.project_path)}
         )
-        run = AnalysisRun(
-            run_id=uuid4().hex,
-            status=AnalysisStatus.QUEUED,
-            request=normalized_request,
-            created_at=utc_now(),
+        run_id = uuid4().hex
+        record = self._get_ledger().create_run(
+            run_id=run_id,
+            submission_key=run_id,
+            request=normalized_request.model_dump(mode="json"),
         )
-        async with self._lock:
-            self._runs[run.run_id] = run
-            task = asyncio.create_task(
-                self._execute_run(run.run_id), name=f"analysis-{run.run_id}"
-            )
-            self._tasks[run.run_id] = task
-            task.add_done_callback(
-                lambda _task, run_id=run.run_id: self._tasks.pop(run_id, None)
-            )
-        return self._snapshot(run)
+        await self._schedule(record["run_id"])
+        return self._to_model(record)
 
     async def get(self, run_id: str) -> AnalysisRun | None:
-        async with self._lock:
-            run = self._runs.get(run_id)
-            return self._snapshot(run) if run else None
+        await self.start()
+        record = self._get_ledger().get_run(run_id)
+        return self._to_model(record) if record else None
 
     async def list(self, limit: int = 20) -> list[AnalysisRun]:
-        async with self._lock:
-            runs = sorted(
-                self._runs.values(), key=lambda item: item.created_at, reverse=True
-            )
-            return [self._snapshot(run) for run in runs[:limit]]
+        await self.start()
+        return [
+            self._to_model(record) for record in self._get_ledger().list_runs(limit)
+        ]
 
     async def cancel(self, run_id: str) -> AnalysisRun | None:
-        async with self._lock:
-            run = self._runs.get(run_id)
-            if run is None:
-                return None
+        await self.start()
+        ledger = self._get_ledger()
+        if ledger.get_run(run_id) is None:
+            return None
+        ledger.cancel(run_id)
+        async with self._task_lock:
             task = self._tasks.get(run_id)
-            if run.status in {AnalysisStatus.QUEUED, AnalysisStatus.RUNNING}:
-                run.status = AnalysisStatus.CANCELLED
-                run.completed_at = utc_now()
-                self._append_event(run, "analysis_cancelled", {})
-                if task:
-                    task.cancel()
-            return self._snapshot(run)
+            if task is not None:
+                task.cancel()
+        record = ledger.get_run(run_id)
+        return self._to_model(record) if record else None
 
     async def close(self) -> None:
-        tasks = list(self._tasks.values())
+        """Stop local workers while leaving unfinished work recoverable."""
+
+        self._closing = True
+        async with self._task_lock:
+            tasks = list(self._tasks.values())
         for task in tasks:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        if self._ledger is not None:
+            self._ledger.close()
+            checkpoint_database(self.database_path)
+            self._ledger = None
+        self._started = False
+
+    async def _schedule(self, run_id: str) -> None:
+        async with self._task_lock:
+            existing = self._tasks.get(run_id)
+            if existing is not None and not existing.done():
+                return
+            task = asyncio.create_task(
+                self._execute_run(run_id), name=f"analysis-{run_id}"
+            )
+            self._tasks[run_id] = task
+            task.add_done_callback(
+                lambda _task, scheduled_run_id=run_id: self._tasks.pop(
+                    scheduled_run_id, None
+                )
+            )
 
     async def _execute_run(self, run_id: str) -> None:
+        ledger = self._get_ledger()
         try:
             async with self._semaphore:
-                async with self._lock:
-                    run = self._runs[run_id]
-                    if run.status == AnalysisStatus.CANCELLED:
-                        return
-                    run.status = AnalysisStatus.RUNNING
-                    run.started_at = utc_now()
-                    self._append_event(run, "analysis_started", {})
+                if not ledger.mark_running(run_id):
+                    return
+                record = ledger.get_run(run_id)
+                if record is None:
+                    return
+                request = AnalysisRequest.model_validate(record["request"])
 
                 def event_sink(event_type: str, data: dict[str, Any]) -> None:
-                    # Existing callbacks are synchronous. Each analysis task owns its
-                    # run, so this bounded append cannot race with another writer.
-                    current_run = self._runs.get(run_id)
-                    if current_run is not None:
-                        self._append_event(current_run, event_type, deepcopy(data))
+                    ledger.append_event(run_id, event_type, data)
 
-                result = await self.executor.execute(run.request, event_sink)
-                async with self._lock:
-                    run = self._runs[run_id]
-                    if run.status != AnalysisStatus.CANCELLED:
-                        run.status = AnalysisStatus.SUCCEEDED
-                        run.result = deepcopy(result)
-                        run.completed_at = utc_now()
-                        self._append_event(run, "analysis_completed", {})
+                result = await self.executor.execute(request, event_sink)
+                ledger.succeed(run_id, result)
         except asyncio.CancelledError:
-            async with self._lock:
-                run = self._runs.get(run_id)
-                if run and run.status != AnalysisStatus.CANCELLED:
-                    run.status = AnalysisStatus.CANCELLED
-                    run.completed_at = utc_now()
-                    self._append_event(run, "analysis_cancelled", {})
+            if self._closing:
+                ledger.requeue_interrupted(run_id)
+            else:
+                ledger.cancel(run_id)
             raise
         except Exception as exc:
-            async with self._lock:
-                run = self._runs[run_id]
-                run.status = AnalysisStatus.FAILED
-                run.error = str(exc)
-                run.completed_at = utc_now()
-                self._append_event(run, "analysis_failed", {"error": str(exc)})
-
-    def _append_event(
-        self, run: AnalysisRun, event_type: str, data: dict[str, Any]
-    ) -> None:
-        history = deque(run.events, maxlen=self.event_history_limit)
-        next_sequence = history[-1].sequence + 1 if history else 1
-        history.append(
-            AnalysisEvent(
-                sequence=next_sequence,
-                event_type=event_type,
-                timestamp=utc_now(),
-                data=data,
-            )
-        )
-        run.events = list(history)
+            ledger.fail(run_id, str(exc))
 
     @staticmethod
     def _resolve_project_path(project_path: str) -> str:
@@ -210,5 +210,5 @@ class AnalysisService:
         return str(resolved)
 
     @staticmethod
-    def _snapshot(run: AnalysisRun) -> AnalysisRun:
-        return run.model_copy(deep=True)
+    def _to_model(record: dict[str, Any]) -> AnalysisRun:
+        return AnalysisRun.model_validate(record)

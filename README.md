@@ -92,6 +92,12 @@ docker compose -f infrastructure/observability/langfuse_stack/docker-compose.yml
 uv run python infrastructure/scripts/init_database.py
 ```
 
+Normal local analysis uses one SQLite database in WAL mode and does not require
+Docker. By default it is created in the platform user-data directory as
+`codeinsight.db`; set `CODEINSIGHT_DATABASE_PATH` to use a portable or test
+location. `infrastructure/db/database.py` is the single source for connection
+pragmas, schema creation, and in-place versioned upgrades.
+
 ### Start CodeInsight
 
 FastAPI hosts both the API and the new frontend:

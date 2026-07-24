@@ -5,9 +5,9 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
-from application.analysis_service import AnalysisService, EventSink
 from api.app import create_app
 from api.models import AnalysisRequest
+from application.analysis_service import AnalysisService, EventSink
 
 
 class FakeExecutor:
@@ -19,7 +19,11 @@ class FakeExecutor:
 
 
 def test_health_frontend_and_analysis_lifecycle(tmp_path: Path) -> None:
-    service = AnalysisService(FakeExecutor(), max_concurrent=1)
+    service = AnalysisService(
+        FakeExecutor(),
+        database_path=tmp_path / "codeinsight.db",
+        max_concurrent=1,
+    )
     app = create_app(service)
 
     with TestClient(app) as client:
@@ -56,7 +60,11 @@ def test_health_frontend_and_analysis_lifecycle(tmp_path: Path) -> None:
 
 
 def test_analysis_rejects_invalid_project_path(tmp_path: Path) -> None:
-    app = create_app(AnalysisService(FakeExecutor()))
+    app = create_app(
+        AnalysisService(
+            FakeExecutor(), database_path=tmp_path / "codeinsight.db"
+        )
+    )
     with TestClient(app) as client:
         response = client.post(
             "/api/v1/analyses",
