@@ -28,7 +28,7 @@ def load_env(env_file: Optional[str] = None) -> bool:
         from dotenv import load_dotenv
     except ImportError:
         logger.warning(
-            "python-dotenv not installed. Install with: pip install python-dotenv"
+            "python-dotenv not installed. Run: uv sync --locked"
         )
         return False
     

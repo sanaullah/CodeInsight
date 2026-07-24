@@ -79,7 +79,7 @@ class GraphBuilder:
                     from langgraph_core.graph import StateGraph, END
                 except ImportError:
                     raise ImportError(
-                        "LangGraph not installed. Install with: pip install langgraph>=0.2.0"
+                        "LangGraph not installed. Run: uv sync --locked"
                     )
             
             # Create state graph
@@ -126,7 +126,7 @@ class GraphBuilder:
             
         except ImportError:
             raise ImportError(
-                "LangGraph not installed. Install with: pip install langgraph>=0.2.0"
+                "LangGraph not installed. Run: uv sync --locked"
             )
         except Exception as e:
             logger.error(f"Error creating graph: {e}", exc_info=True)

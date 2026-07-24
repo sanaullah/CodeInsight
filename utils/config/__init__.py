@@ -16,7 +16,6 @@ from .settings_db import (
     set_setting,
     get_all_settings,
     reset_user_settings,
-    verify_setting_sync,
-    get_user_id
+    verify_setting_sync
 )
 from .settings_validator import validate_setting, get_all_defaults

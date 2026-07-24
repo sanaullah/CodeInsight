@@ -101,7 +101,7 @@ def create_swarm_analysis_graph(
         try:
             from langgraph_core.graph import StateGraph, END
         except ImportError:
-            raise ImportError("LangGraph not installed. Install with: pip install langgraph>=0.2.0")
+            raise ImportError("LangGraph not installed. Run: uv sync --locked")
     
     # Create state graph
     graph = StateGraph(SwarmAnalysisState)

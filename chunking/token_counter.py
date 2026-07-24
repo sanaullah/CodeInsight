@@ -77,7 +77,7 @@ class TokenCounter:
         # Validate that at least tiktoken is available for fallback
         if tiktoken is None:
             raise ImportError(
-                "tiktoken is required for token counting. Install with: pip install tiktoken"
+                "tiktoken is required for token counting. Run: uv sync --locked"
             )
 
         # Determine encoding for tiktoken fallback

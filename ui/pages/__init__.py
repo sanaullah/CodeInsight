@@ -1,4 +1,0 @@
-"""
-Streamlit pages for CodeInsight.
-"""
-

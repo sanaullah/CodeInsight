@@ -13,7 +13,7 @@ from .nodes import llm_node, tool_node, conditional_node
 from .checkpoints import get_checkpoint_adapter, setup_checkpoints
 from .streaming import stream_graph, format_stream_event
 from .human_in_loop import human_approval_node, human_feedback_node
-from .integration import setup_langfuse_callbacks, LangGraphLangfuseCallback  # LangGraphLangfuseCallback is deprecated
+from .integration import setup_langfuse_callbacks
 
 __version__ = "1.0.0"
 __all__ = [
@@ -31,6 +31,5 @@ __all__ = [
     "human_approval_node",
     "human_feedback_node",
     "setup_langfuse_callbacks",
-    "LangGraphLangfuseCallback",  # Deprecated - use setup_langfuse_callbacks() which returns native CallbackHandler
 ]
 

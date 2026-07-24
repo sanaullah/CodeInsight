@@ -8,9 +8,7 @@ To use this framework in a new project, copy:
 - `llm/` folder (exclude `__pycache__/`)
 - `utils/` folder (exclude `__pycache__/`)
 - `config.yaml` (update with your settings)
-- `requirements.txt` (install dependencies)
-
-See `docs/SETUP_GUIDE.md` for detailed instructions.
+- the relevant dependency declarations from the root `pyproject.toml`
 
 ## Overview
 
@@ -22,16 +20,10 @@ This framework simplifies the integration of LiteLLM with Langfuse by:
 
 ## Installation
 
-Install the required dependencies:
+Install the project and its locked dependencies from the repository root:
 
 ```bash
-pip install litellm>=1.0.0 langfuse>=2.0.0 pydantic>=2.0.0 pyyaml>=6.0
-```
-
-Or install from requirements.txt:
-
-```bash
-pip install -r requirements.txt
+uv sync --locked
 ```
 
 ## Configuration
@@ -355,7 +347,8 @@ Framework/
 │   ├── __init__.py               # Exports Langfuse utilities
 │   └── langfuse_integration.py   # Langfuse integration
 ├── config.yaml                   # Configuration file
-├── requirements.txt              # Dependencies
+├── pyproject.toml                # Canonical direct dependencies
+├── uv.lock                       # Exact resolved dependency graph
 └── examples/example.py           # Usage example
 ```
 

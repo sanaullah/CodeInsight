@@ -37,6 +37,7 @@ def test_health_frontend_and_analysis_lifecycle(tmp_path: Path) -> None:
         assert support["python"] == "parsed"
         assert support["typescript"] == "dependency-aware"
         assert support["rust"] == "discovery"
+        assert "streamlit_fallback_available" not in capabilities.json()
 
         frontend = client.get("/")
         assert frontend.status_code == 200

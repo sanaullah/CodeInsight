@@ -1,4 +1,0 @@
-"""
-Streamlit UI for CodeInsight.
-"""
-

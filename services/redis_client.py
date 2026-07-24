@@ -186,7 +186,7 @@ class RedisClient:
 
             except ImportError:
                 logger.warning(
-                    "Redis library not installed. Install with: pip install redis>=5.0.0"
+                    "Redis library not installed. Run: uv sync --locked"
                 )
                 _redis_available = False
                 return None

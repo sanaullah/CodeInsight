@@ -32,7 +32,7 @@ CodeInsight is built around capabilities that most AI code review tools do not o
 * **Token-aware chunking** — Large codebases are split by strategy (NONE, STANDARD, AGGRESSIVE); chunks are analyzed in parallel and synthesized into a single report.
 * **Optional dynamic file selection** — Per-role file selection so each agent focuses on the most relevant files.
 * **Previous-report comparison** — Load a prior analysis so the synthesis report includes “Progress Since Last” and trend-aware guidance.
-* **Streamlit UI** — Run analyses, view architecture models, scan history, and health status from a single app.
+* **FastAPI review workspace** — Submit bounded analyses, follow lifecycle events, cancel runs, inspect recent session history, and read reports through a typed HTTP API and responsive web interface.
 
 ---
 
@@ -92,7 +92,7 @@ docker compose -f langfuse/docker-compose.yml up -d
 uv run python scripts/init_database.py
 ```
 
-### Start the modern web application
+### Start CodeInsight
 
 FastAPI hosts both the API and the new frontend:
 
@@ -104,17 +104,9 @@ Open `http://127.0.0.1:8000`; API documentation is at `/api/docs`. The
 frontend submits real jobs to the existing LangGraph analysis engine and shows
 their event timeline and synthesized report.
 
-### Streamlit migration fallback
-
-The original experience remains available while the new frontend reaches
-feature parity:
-
-```bash
-uv run streamlit run ui/app.py
-```
-
-`requirements.txt` and the old setup scripts remain temporarily as migration
-references, but are no longer the supported installation path.
+FastAPI is the only supported application entry point. The retired Streamlit
+UI and pip-based setup scripts are no longer included; use `uv` for every
+Python command so the checked-in lockfile remains authoritative.
 
 ### Tests
 

@@ -6,7 +6,6 @@ Uses CachedSettingsStorage for automatic Redis caching.
 """
 
 import logging
-import hashlib
 from typing import Dict, Optional, Any
 
 from services.storage.base_storage import (
@@ -62,29 +61,6 @@ def init_settings_db() -> None:
     except Exception as e:
         logger.error(f"Error initializing settings database: {e}", exc_info=True)
         raise
-
-
-def get_user_id() -> str:
-    """
-    Get current user ID.
-    
-    Uses Streamlit session state to generate a persistent user ID.
-    If not present, generates one based on session state hash.
-    
-    Returns:
-        User ID string
-    """
-    import streamlit as st
-    
-    if "user_id" not in st.session_state:
-        # Generate a persistent user ID based on session state
-        # This ensures the same user gets the same ID across sessions
-        session_id = st.session_state.get("_session_id", str(hash(str(st.session_state))))
-        user_id = f"user_{hashlib.md5(session_id.encode()).hexdigest()[:16]}"
-        st.session_state["user_id"] = user_id
-        logger.debug(f"Generated new user ID: {user_id}")
-    
-    return st.session_state["user_id"]
 
 
 def get_setting(user_id: str, key: str, default: Optional[Any] = None) -> Optional[Any]:

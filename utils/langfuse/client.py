@@ -56,7 +56,7 @@ def get_langfuse_client():
             try:
                 from langfuse import get_client, Langfuse
             except ImportError:
-                logger.warning("Langfuse not installed. Install with: pip install langfuse>=3.0.0")
+                logger.warning("Langfuse not installed. Run: uv sync --locked")
                 return None
             
             # Set environment variables for v3 SDK (get_client() reads from env vars)

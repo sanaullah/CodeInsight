@@ -20,7 +20,7 @@ try:
     MINIO_AVAILABLE = True
 except ImportError:
     MINIO_AVAILABLE = False
-    logger.warning("boto3 not installed. Install with: pip install boto3")
+    logger.warning("boto3 not installed. Run: uv sync --locked")
 
 
 class MinIOClient:
@@ -43,7 +43,7 @@ class MinIOClient:
             config: Optional MinIO configuration (defaults to from_env)
         """
         if not MINIO_AVAILABLE:
-            raise ImportError("boto3 is not installed. Install with: pip install boto3")
+            raise ImportError("boto3 is not installed. Run: uv sync --locked")
 
         self.config = config or get_db_config().minio
         self._s3_client = None

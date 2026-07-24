@@ -35,7 +35,7 @@ def get_checkpoint_adapter(
     except ImportError:
         raise ImportError(
             "LangGraph checkpoint modules not found. "
-            "Install with: pip install langgraph>=0.2.0"
+            "Run `uv sync --locked` to install the project environment."
         )
     
     if checkpoint_type == "memory":

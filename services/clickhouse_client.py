@@ -19,7 +19,7 @@ except ImportError:
     CLICKHOUSE_AVAILABLE = False
     ClickHouseDriverClient = None  # type: ignore
     logger.warning(
-        "clickhouse-driver not installed. Install with: pip install clickhouse-driver"
+        "clickhouse-driver not installed. Run: uv sync --locked"
     )
 
 
@@ -43,7 +43,7 @@ class ClickHouseClient:
         """
         if not CLICKHOUSE_AVAILABLE:
             raise ImportError(
-                "clickhouse-driver is not installed. Install with: pip install clickhouse-driver"
+                "clickhouse-driver is not installed. Run: uv sync --locked"
             )
 
         self.config = config or get_db_config().clickhouse

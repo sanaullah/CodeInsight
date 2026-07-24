@@ -125,4 +125,3 @@ class CapabilitiesResponse(BaseModel):
     languages: list[LanguageCapability]
     default_max_agents: int = 4
     max_agents: int = 12
-    streamlit_fallback_available: bool = True

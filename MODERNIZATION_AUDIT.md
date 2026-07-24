@@ -9,10 +9,11 @@ security and agent guardrails, dependency policy, and validation plan.
 
 ## Executive assessment
 
-CodeInsight is a substantial alpha prototype: 184 Python files and about 41,800
-lines implementing Streamlit, a 17-node LangGraph, LiteLLM/LangChain, Langfuse,
-and PostgreSQL/Redis storage. Its core idea is sound: combine repository
-architecture context with focused specialist reviews and one synthesis.
+The original audit baseline was a substantial alpha prototype: 184 Python
+files and about 41,800 lines implementing Streamlit, a 17-node LangGraph,
+LiteLLM/LangChain, Langfuse, and PostgreSQL/Redis storage. Its core idea is
+sound: combine repository architecture context with focused specialist reviews
+and one synthesis.
 
 It is not yet a dependable polyglot reviewer. It is primarily a
 whole-repository LLM analyzer whose effective default coverage is Python,
@@ -42,8 +43,9 @@ must proceed in this order:
 
 ## Current-state inventory
 
-- Streamlit is the original UI and mixes presentation with threading, event
-  queues, orchestration, persistence, and formatting.
+- The original Streamlit UI mixed presentation with threading, event queues,
+  orchestration, persistence, and formatting. It has now been retired; FastAPI
+  and the same-origin web workspace are the only application boundary.
 - `SwarmAnalysisOrchestrator` invokes a 17-node LangGraph: scan, LLM
   architecture inference, previous report, LLM role selection, parallel prompt
   generation/validation, metadata “spawn,” parallel role execution, and
@@ -111,7 +113,9 @@ fail open. Architecture constraints and budgets silently disappear.
 
 ### High — setup, dependency, and configuration drift
 
-- `setup.py` calls undefined `get_activation_command`; a return is misplaced.
+- The retired `setup.py` called undefined `get_activation_command`; a return
+  was misplaced. The setup scripts and duplicate requirements manifest have
+  now been removed in favor of `uv`.
 - README referenced nonexistent `config.yaml.example`.
 - Docs prescribe `custom_openai/`; the factory emits `openai/`.
 - YAML prices use `*_per_1m`, the Pydantic model declares `*_per_1k`, and cost
@@ -157,7 +161,7 @@ six-service-looking local footprint is excessive for a desktop alpha.
 | --- | --- |
 | Orchestration | LangGraph 1.2.9; LangChain 1.3.14; langchain-core 1.5.1; langchain-litellm 0.7.0 |
 | Models/observability | LiteLLM 1.91.4; Langfuse 4.14.1; Pydantic 2.13.4; OpenTelemetry 1.44.0 |
-| API/UI/test | FastAPI 0.139.2; Uvicorn 0.51.0; Streamlit 1.60.0; pytest 9.1.1; pytest-asyncio 1.4.0; HTTPX 0.28.1 |
+| API/UI/test | FastAPI 0.139.2; Uvicorn 0.51.0; pytest 9.1.1; pytest-asyncio 1.4.0; HTTPX 0.28.1 |
 | Infrastructure | PyYAML 6.0.3; Redis 8.0.1; psycopg2-binary 2.9.12; clickhouse-driver 0.2.11; boto3 1.43.56; tiktoken 0.13.0; python-dotenv 1.2.2 |
 
 `pyproject.toml` constrains compatible majors; `uv.lock` records the exact
@@ -256,13 +260,15 @@ checkpoints, and partial-result semantics.
   version, expiry, and approval; promotion is offline, reversible, canaried.
 - Pin images by digest and fail fast on dev credentials outside dev profiles.
 
-## FastAPI/frontend migration
+## FastAPI/frontend architecture
 
 The first slice adds a stable `/api/v1` boundary, bounded typed requests,
 queued/running/succeeded/failed/cancelled lifecycle, concurrent-run limits,
 lazy adaptation to the existing orchestrator, health/capability/run/cancel
 endpoints, and a responsive same-origin frontend with real submission, events,
-reports, and run history. Streamlit remains the migration fallback.
+reports, and run history. The Streamlit UI, its session-context adapters, and
+its dependency have been removed; FastAPI is now the sole supported entry
+point.
 
 The in-memory run registry proves the boundary without coupling new code to
 legacy storage. Next, define `ReviewRunRepository`, persist runs/events, and
@@ -274,7 +280,7 @@ beyond trusted loopback.
 ### Phase 0 — this slice
 
 - Canonical `uv` metadata and lock.
-- FastAPI API and integrated frontend; Streamlit preserved.
+- FastAPI API and integrated frontend; Streamlit and pip-based setup retired.
 - Tests for validation, paths, lifecycle, health, frontend, and errors.
 - This consolidated audit/plan.
 
@@ -345,4 +351,5 @@ canary. Length/Markdown proxy scores must not gate promotion.
 - Accuracy and operational thresholds are enforced.
 - Capabilities and learned artifacts fail closed.
 - API lifecycle is durable, authenticated, isolated, and audited.
-- Streamlit can retire without loss of supported functionality.
+- FastAPI is the sole supported UI/API boundary, with no Streamlit runtime or
+  duplicate dependency manifest.
