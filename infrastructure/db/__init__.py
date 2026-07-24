@@ -6,6 +6,7 @@ from .database import (
     initialize_database,
     open_database,
 )
+from .snapshot_repository import SqliteSnapshotRepository
 from .task_repository import SqliteTaskRepository, TaskLease
 
 __all__ = [
@@ -14,5 +15,6 @@ __all__ = [
     "initialize_database",
     "open_database",
     "SqliteTaskRepository",
+    "SqliteSnapshotRepository",
     "TaskLease",
 ]
