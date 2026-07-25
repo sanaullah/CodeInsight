@@ -174,7 +174,10 @@ class NativeTaskScheduler:
                 lease,
                 error=str(exc),
                 retry_delay_seconds=self.retry_delay_seconds,
-                retryable=not isinstance(exc, PermanentTaskError),
+                retryable=(
+                    not isinstance(exc, PermanentTaskError)
+                    and bool(getattr(exc, "retryable", True))
+                ),
             )
             self._emit("task_failed", lease, {"status": status, "reason": str(exc)})
 
@@ -190,7 +193,10 @@ class NativeTaskScheduler:
             {
                 "run_id": lease.run_id,
                 "wave_id": lease.wave_id,
+                "role_id": lease.role_id,
                 "task_id": lease.task_id,
+                "attempt_id": lease.attempt_id,
+                "attempt_number": lease.attempt_number,
                 **data,
             },
         )

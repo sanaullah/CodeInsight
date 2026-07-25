@@ -10,9 +10,14 @@ from typing import Any, Protocol
 class TraceEvent:
     name: str
     run_id: str
+    stage: str | None = None
     wave_id: str | None = None
+    role_id: str | None = None
     task_id: str | None = None
+    attempt_id: str | None = None
+    attempt_number: int | None = None
     model_call_id: str | None = None
+    prompt_artifact_id: str | None = None
     attributes: dict[str, Any] = field(default_factory=dict)
 
 

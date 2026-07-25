@@ -151,6 +151,7 @@ class NativeAnalysisExecutor:
             snapshots=snapshots,
             analysis=analysis,
             scheduler=scheduler,
+            event_sink=event_sink,
         )
         if isinstance(self.gateway, BoundedModelGateway):
             await self.gateway.configure_run_budget(
@@ -247,7 +248,8 @@ class AnalysisService:
                 public_key=self.settings.langfuse_public_key,
                 secret_key=self.settings.langfuse_secret_key,
                 host=self.settings.langfuse_host,
-                capture_content=self.settings.langfuse_capture_content,
+                capture_prompts=self.settings.langfuse_capture_prompts,
+                capture_completions=self.settings.langfuse_capture_completions,
             )
         else:
             self._tracer = NullTraceExporter()
@@ -299,11 +301,8 @@ class AnalysisService:
 
     @property
     def langfuse_enabled(self) -> bool:
-        return bool(
-            self.settings.langfuse_enabled
-            and self.settings.langfuse_public_key
-            and self.settings.langfuse_secret_key
-        )
+        tracer = self._get_tracer()
+        return isinstance(tracer, LangfuseTraceExporter) and tracer.enabled
 
     async def start(self) -> int:
         async with self._start_lock:
@@ -594,6 +593,13 @@ class AnalysisService:
         queued = self._get_ledger().list_queued_run_ids()
         for run_id in queued:
             await self._schedule(run_id)
+            self._get_tracer().emit(
+                TraceEvent(
+                    name="analysis_recovery_scheduled",
+                    run_id=run_id,
+                    attributes={"recovered_task_count": recovered_tasks},
+                )
+            )
         result = RecoveryResponse(
             recovered_runs=self._startup_recovered,
             recovered_tasks=recovered_tasks,
@@ -651,25 +657,56 @@ class AnalysisService:
                         TraceEvent(
                             name=event_type,
                             run_id=run_id,
+                            stage=data.get("stage"),
                             wave_id=data.get("wave_id"),
+                            role_id=data.get("role_id"),
                             task_id=data.get("task_id"),
-                            attributes=data,
+                            attempt_id=data.get("attempt_id"),
+                            attempt_number=data.get("attempt_number"),
+                            model_call_id=data.get("model_call_id"),
+                            prompt_artifact_id=data.get("prompt_artifact_id"),
+                            attributes=_trace_attributes(data),
                         )
                     )
 
+                self._get_tracer().emit(
+                    TraceEvent(name="analysis_run_started", run_id=run_id)
+                )
                 result = await self._get_executor().execute(run_id, request, event_sink)
                 if result.get("outcome") == "needs_attention":
                     ledger.needs_attention(run_id, result)
+                    self._get_tracer().emit(
+                        TraceEvent(
+                            name="analysis_run_needs_attention",
+                            run_id=run_id,
+                        )
+                    )
                 else:
                     ledger.succeed(run_id, result)
+                    self._get_tracer().emit(
+                        TraceEvent(name="analysis_run_succeeded", run_id=run_id)
+                    )
         except asyncio.CancelledError:
             if self._closing:
                 ledger.requeue_interrupted(run_id)
+                self._get_tracer().emit(
+                    TraceEvent(name="analysis_run_interrupted", run_id=run_id)
+                )
             else:
                 ledger.cancel(run_id)
+                self._get_tracer().emit(
+                    TraceEvent(name="analysis_run_cancelled", run_id=run_id)
+                )
             raise
         except Exception as exc:
             ledger.fail(run_id, str(exc))
+            self._get_tracer().emit(
+                TraceEvent(
+                    name="analysis_run_failed",
+                    run_id=run_id,
+                    attributes=_trace_attributes({"error": str(exc)}),
+                )
+            )
 
     @staticmethod
     def _resolve_project_path(project_path: str) -> str:
@@ -699,3 +736,37 @@ def _synthesize(findings: list[dict[str, Any]], coverage: list[dict[str, Any]]) 
     for finding in findings:
         lines.append(f"- [{finding['severity'].upper()}] {finding['title']}: {finding['claim']}")
     return "\n".join(lines)
+
+
+def _trace_attributes(data: dict[str, Any]) -> dict[str, Any]:
+    """Keep exporter metadata bounded and exclude paths/raw failure text."""
+
+    safe: dict[str, Any] = {}
+    for key, value in data.items():
+        lowered = key.lower()
+        if key in {
+            "run_id",
+            "wave_id",
+            "role_id",
+            "task_id",
+            "attempt_id",
+            "attempt_number",
+            "model_call_id",
+            "prompt_artifact_id",
+            "stage",
+        }:
+            continue
+        if lowered in {"error", "reason"}:
+            text = str(value)
+            category = (
+                text.split("category=", 1)[1].split()[0]
+                if "category=" in text
+                else "workflow_error"
+            )
+            safe[f"{lowered}_category"] = category
+            continue
+        if "path" in lowered or lowered == "project":
+            safe[key] = "[omitted]"
+            continue
+        safe[key] = value
+    return safe

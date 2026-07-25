@@ -14,6 +14,7 @@ from api.config import ApiSettings
 from api.models import AnalysisRequest, AnalysisStatus
 from application.analysis_service import AnalysisService
 from application.model_gateway import ModelRequest, ModelResponse, ModelUsage
+from application.tracing import TraceEvent
 from infrastructure.db.database import database_connection
 
 
@@ -94,6 +95,18 @@ class WrongContractGateway:
         )
 
 
+class RecordingTracer:
+    def __init__(self) -> None:
+        self.events: list[TraceEvent] = []
+        self.closed = False
+
+    def emit(self, event: TraceEvent) -> None:
+        self.events.append(event)
+
+    def close(self) -> None:
+        self.closed = True
+
+
 def _repository(tmp_path: Path) -> Path:
     root = tmp_path / "repository"
     (root / "tests").mkdir(parents=True)
@@ -135,6 +148,7 @@ async def test_native_application_path_persists_full_intelligence(
 ) -> None:
     database_path = tmp_path / "state" / "codeinsight.db"
     gateway = EvidenceGateway(delay=0.005)
+    tracer = RecordingTracer()
     settings = ApiSettings(
         database_path=database_path,
         default_model="fixture-model",
@@ -145,6 +159,7 @@ async def test_native_application_path_persists_full_intelligence(
         max_concurrent=1,
         settings=settings,
         gateway=gateway,
+        tracer=tracer,
     )
     submitted = await service.submit(
         AnalysisRequest(
@@ -171,6 +186,7 @@ async def test_native_application_path_persists_full_intelligence(
     assert intelligence.findings
     assert intelligence.coverage
     assert len(intelligence.model_calls) == gateway.calls
+    assert all(item["attempt_id"] for item in intelligence.model_calls)
     assert len(intelligence.prompt_artifacts) == gateway.calls
     prompt = intelligence.prompt_artifacts[0]
     assert prompt["prompt_template"] == "native-specialist-system"
@@ -190,6 +206,30 @@ async def test_native_application_path_persists_full_intelligence(
     assert "def calculate(value)" not in prompt["prompt_text"]
     assert intelligence.usage["total_tokens"] == gateway.calls * 30
     assert gateway.max_active <= 2
+    names = {event.name for event in tracer.events}
+    assert {
+        "analysis_run_started",
+        "stage_changed",
+        "wave_planned",
+        "role_planned",
+        "task_enqueued",
+        "task_started",
+        "prompt_artifact_recorded",
+        "model_call_started",
+        "model_call_completed",
+        "task_succeeded",
+        "analysis_run_succeeded",
+    } <= names
+    model_event = next(
+        event for event in tracer.events if event.name == "model_call_completed"
+    )
+    assert model_event.wave_id
+    assert model_event.role_id
+    assert model_event.task_id
+    assert model_event.attempt_id
+    assert model_event.attempt_number == 1
+    assert model_event.model_call_id
+    assert model_event.prompt_artifact_id
     with database_connection(database_path) as connection:
         with pytest.raises(
             sqlite3.IntegrityError,
@@ -204,6 +244,7 @@ async def test_native_application_path_persists_full_intelligence(
                 (prompt["prompt_artifact_id"],),
             )
     await service.close()
+    assert tracer.closed
 
 
 @pytest.mark.asyncio

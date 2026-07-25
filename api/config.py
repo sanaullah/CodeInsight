@@ -50,7 +50,12 @@ def _enabled(name: str) -> bool:
 
 def _provider_capability_profile() -> str:
     value = os.getenv("CODEINSIGHT_PROVIDER_CAPABILITY_PROFILE", "direct").strip()
-    allowed = {"direct", "instructor-json", "instructor-json-schema"}
+    allowed = {
+        "direct",
+        "instructor-json",
+        "instructor-json-schema",
+        "instructor-tools",
+    }
     if value not in allowed:
         choices = ", ".join(sorted(allowed))
         raise ValueError(
@@ -92,7 +97,8 @@ class ApiSettings:
     langfuse_public_key: str = ""
     langfuse_secret_key: str = ""
     langfuse_host: str = "http://localhost:3000"
-    langfuse_capture_content: bool = False
+    langfuse_capture_prompts: bool = False
+    langfuse_capture_completions: bool = False
     build_commit: str | None = None
     build_time: str | None = None
 
@@ -122,7 +128,12 @@ class ApiSettings:
             langfuse_public_key=os.getenv("LANGFUSE_PUBLIC_KEY", ""),
             langfuse_secret_key=os.getenv("LANGFUSE_SECRET_KEY", ""),
             langfuse_host=os.getenv("LANGFUSE_HOST", "http://localhost:3000"),
-            langfuse_capture_content=_enabled("CODEINSIGHT_LANGFUSE_CAPTURE_CONTENT"),
+            langfuse_capture_prompts=_enabled(
+                "CODEINSIGHT_LANGFUSE_CAPTURE_PROMPTS"
+            ),
+            langfuse_capture_completions=_enabled(
+                "CODEINSIGHT_LANGFUSE_CAPTURE_COMPLETIONS"
+            ),
             build_commit=_optional_text("CODEINSIGHT_BUILD_COMMIT"),
             build_time=_optional_text("CODEINSIGHT_BUILD_TIME"),
         )

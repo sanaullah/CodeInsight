@@ -45,7 +45,7 @@ def _request(**changes: Any) -> ModelRequest:
 
 @contextmanager
 def _provider(
-    contents: list[str], *, delay_seconds: float = 0
+    contents: list[str | dict[str, Any]], *, delay_seconds: float = 0
 ) -> Iterator[tuple[str, list[dict[str, Any]]]]:
     requests: list[dict[str, Any]] = []
 
@@ -56,16 +56,19 @@ def _provider(
             if delay_seconds:
                 time.sleep(delay_seconds)
             index = min(len(requests) - 1, len(contents) - 1)
+            selected = contents[index]
+            message = (
+                selected
+                if isinstance(selected, dict)
+                else {"role": "assistant", "content": selected}
+            )
             body = {
                 "id": f"request-{len(requests)}",
                 "model": "served-model",
                 "choices": [
                     {
                         "index": 0,
-                        "message": {
-                            "role": "assistant",
-                            "content": contents[index],
-                        },
+                        "message": message,
                         "finish_reason": "stop",
                     }
                 ],
@@ -137,6 +140,37 @@ async def test_instructor_adapter_validates_exact_specialist_contract() -> None:
 
 
 @pytest.mark.asyncio
+async def test_instructor_tools_profile_accepts_standard_tool_call_envelope() -> None:
+    message = {
+        "role": "assistant",
+        "content": None,
+        "tool_calls": [
+            {
+                "id": "call-1",
+                "type": "function",
+                "function": {
+                    "name": "SpecialistOutput",
+                    "arguments": _valid_output(),
+                },
+            }
+        ],
+    }
+    with _provider([message]) as (base_url, requests):
+        gateway = InstructorOpenAICompatibleGateway(
+            base_url=base_url,
+            profile=provider_capability_profile("instructor-tools"),
+        )
+        try:
+            response = await gateway.complete(_request())
+        finally:
+            await gateway.aclose()
+
+    assert response.content["analyzed_paths"] == []
+    assert len(requests) == 1
+    assert requests[0]["tools"][0]["function"]["name"] == "SpecialistOutput"
+
+
+@pytest.mark.asyncio
 async def test_instructor_adapter_makes_only_one_sanitized_correction_call() -> None:
     with _provider(["{}", _valid_output()]) as (base_url, requests):
         gateway = InstructorOpenAICompatibleGateway(
@@ -157,7 +191,9 @@ async def test_instructor_adapter_makes_only_one_sanitized_correction_call() -> 
 
 
 @pytest.mark.asyncio
-async def test_instructor_adapter_stops_after_two_invalid_responses() -> None:
+async def test_instructor_adapter_stops_after_two_invalid_responses(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     with _provider(["{}", "{}"]) as (base_url, requests):
         gateway = InstructorOpenAICompatibleGateway(
             base_url=base_url,
@@ -171,10 +207,12 @@ async def test_instructor_adapter_stops_after_two_invalid_responses() -> None:
 
     assert len(requests) == 2
     assert caught.value.category == "response_schema_validation"
+    assert not caught.value.retryable
     assert str(caught.value) == (
         "provider_contract_error category=response_schema_validation"
     )
     assert "analyzed_paths" not in str(caught.value)
+    assert "{}" not in caplog.text
 
 
 @pytest.mark.asyncio
@@ -252,6 +290,7 @@ async def test_instructor_adapter_propagates_cancellation() -> None:
 def test_provider_capability_profile_is_explicit_and_validated() -> None:
     assert not provider_capability_profile("direct").instructor_supported
     assert provider_capability_profile("instructor-json").instructor_supported
+    assert provider_capability_profile("instructor-tools").instructor_supported
     with pytest.raises(ValueError, match="must be one of"):
         provider_capability_profile("automatic")
 

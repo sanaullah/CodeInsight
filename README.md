@@ -137,11 +137,63 @@ CODEINSIGHT_LANGFUSE_ENABLED=true
 LANGFUSE_PUBLIC_KEY=...
 LANGFUSE_SECRET_KEY=...
 LANGFUSE_HOST=https://your-langfuse-host
+CODEINSIGHT_LANGFUSE_CAPTURE_PROMPTS=false
+CODEINSIGHT_LANGFUSE_CAPTURE_COMPLETIONS=false
 ```
 
-No Langfuse credentials or server are required for normal runs. Prompt/source
-content is omitted unless `CODEINSIGHT_LANGFUSE_CAPTURE_CONTENT=true` is
-explicitly set; key, token, secret, and password fields remain redacted.
+No Langfuse package, credentials, or server are required for normal runs.
+SQLite remains authoritative and import, initialization, queue, send, and
+flush failures cannot fail an analysis. Export is metadata-only by default and
+correlates stable run, stage, wave, role, task, attempt, model-call, and prompt
+artifact IDs plus bounded token/cost metadata.
+
+Generated source-free specialist prompts and model completions have independent
+opt-ins. Raw source/file bodies, source-bearing user prompts, tool output,
+absolute paths, credentials, authorization data, cookies, and provider secrets
+remain omitted or redacted even when either content switch is enabled.
+
+To smoke-test an operator-managed Docker/self-hosted Langfuse instance, install
+the optional extra, configure its project keys/host, then explicitly authorize:
+
+```powershell
+$env:CODEINSIGHT_RUN_LANGFUSE_DOCKER_SMOKE = "1"
+.\.venv\Scripts\python.exe -m pytest `
+  tests/test_live_langfuse_smoke.py -s
+```
+
+The smoke emits only synthetic IDs and token/cost metadata, queries the
+observation back, and is skipped by default. Starting, upgrading, or deleting a
+Docker deployment remains an operator action; the test never manages volumes.
+
+## Structured-output provider profiles
+
+The direct OpenAI-compatible gateway remains the default. Select an Instructor
+adapter only after testing the exact endpoint/model pair:
+
+```text
+CODEINSIGHT_PROVIDER_CAPABILITY_PROFILE=direct
+# alternatives: instructor-json, instructor-json-schema, instructor-tools
+```
+
+Profiles never silently fall back after a runtime provider, timeout, or
+validation error. The default-skipped compatibility gates require explicit
+authorization and print only aggregate status, latency, token, and cost data:
+
+```powershell
+$env:CODEINSIGHT_RUN_LIVE_PROVIDER_TEST = "1"
+.\.venv\Scripts\python.exe -m pytest `
+  tests/test_live_provider_smoke.py::test_live_structured_output_ab_compatibility -s
+
+# Optional bounded replay of request metadata/latest files from a local run.
+$env:CODEINSIGHT_LIVE_REPLAY_RUN_ID = "<run-id>"
+$env:CODEINSIGHT_LIVE_REPLAY_PROFILE = "instructor-json"
+.\.venv\Scripts\python.exe -m pytest `
+  tests/test_live_provider_smoke.py::test_live_instructor_profile_replays_persisted_request -s
+```
+
+The replay reads the selected request from the canonical ledger, analyzes the
+repository read-only, and writes results to an isolated temporary ledger. A
+profile must not become the default unless the representative replay succeeds.
 
 ## HTTP lifecycle
 

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 from uuid import uuid4
 
 from analysis.native.pipeline import (
@@ -46,6 +48,7 @@ class NativeAnalysisCoordinator:
         snapshots: SqliteSnapshotRepository,
         analysis: SqliteAnalysisRepository,
         scheduler: NativeTaskScheduler,
+        event_sink: Callable[[str, dict[str, Any]], None] | None = None,
         planner: RepositoryRolePlanner | None = None,
         assessor: CoverageAssessor | None = None,
     ) -> None:
@@ -54,6 +57,11 @@ class NativeAnalysisCoordinator:
         self.snapshots = snapshots
         self.analysis = analysis
         self.scheduler = scheduler
+        self.event_sink = event_sink or (
+            lambda event_type, data: self.ledger.append_event(
+                str(data.get("run_id", "")), event_type, data
+            )
+        )
         self.planner = planner or RepositoryRolePlanner()
         self.assessor = assessor or CoverageAssessor()
 
@@ -161,10 +169,10 @@ class NativeAnalysisCoordinator:
             )
             next_plan = None
             if plan.wave_id == resuming_wave_id:
-                self.ledger.append_event(
-                    run_id,
+                self.event_sink(
                     "wave_resumed",
                     {
+                        "run_id": run_id,
                         "wave_id": plan.wave_id,
                         "wave_number": plan.wave_number,
                         "task_count": len(plan.tasks),
@@ -292,10 +300,10 @@ class NativeAnalysisCoordinator:
             )
         for task in plan.tasks:
             self.tasks.enqueue(task)
-        self.ledger.append_event(
-            plan.run_id,
+        self.event_sink(
             "wave_planned",
             {
+                "run_id": plan.run_id,
                 "wave_id": plan.wave_id,
                 "wave_number": plan.wave_number,
                 "role_count": len(plan.roles),
@@ -303,7 +311,33 @@ class NativeAnalysisCoordinator:
                 "coverage_targets": list(plan.coverage_targets),
             },
         )
+        for role in plan.roles:
+            self.event_sink(
+                "role_planned",
+                {
+                    "run_id": plan.run_id,
+                    "wave_id": plan.wave_id,
+                    "role_id": role.role_id,
+                    "role_name": role.name,
+                    "model_policy": role.model_policy,
+                },
+            )
+        for task in plan.tasks:
+            self.event_sink(
+                "task_enqueued",
+                {
+                    "run_id": plan.run_id,
+                    "wave_id": plan.wave_id,
+                    "role_id": task.role_id,
+                    "task_id": task.task_id,
+                    "task_type": task.task_type,
+                },
+            )
 
     def _stage(self, run_id: str, stage: RunStage) -> None:
         if not self.ledger.set_stage(run_id, stage):
             raise RuntimeError(f"run left active state before stage {stage.value}")
+        self.event_sink(
+            "stage_changed",
+            {"run_id": run_id, "stage": stage.value},
+        )

@@ -91,7 +91,10 @@ class GatewaySpecialistClient:
             "run_id": request.run_id,
             "wave_id": request.wave_id,
             "task_id": request.task_id,
+            "attempt_id": request.attempt_id,
+            "attempt_number": str(request.attempt_number),
             "model_call_id": model_call_id,
+            "prompt_artifact_id": prompt_artifact_id,
         }
         self.prompts.record(
             prompt_artifact_id=prompt_artifact_id,
@@ -109,6 +112,7 @@ class GatewaySpecialistClient:
             run_id=request.run_id,
             wave_id=request.wave_id,
             task_id=request.task_id,
+            attempt_id=request.attempt_id,
             provider=provider_hint,
             model=self.model,
             request_hash=request_hash,
@@ -116,11 +120,34 @@ class GatewaySpecialistClient:
         )
         self.traces.emit(
             TraceEvent(
+                name="prompt_artifact_recorded",
+                run_id=request.run_id,
+                wave_id=request.wave_id,
+                role_id=request.role.role_id,
+                task_id=request.task_id,
+                attempt_id=request.attempt_id,
+                attempt_number=request.attempt_number,
+                model_call_id=model_call_id,
+                prompt_artifact_id=prompt_artifact_id,
+                attributes={
+                    "prompt_template": SPECIALIST_PROMPT_TEMPLATE,
+                    "prompt_version": SPECIALIST_PROMPT_VERSION,
+                    "request_hash": request_hash,
+                    "prompt_text": system_prompt,
+                },
+            )
+        )
+        self.traces.emit(
+            TraceEvent(
                 name="model_call_started",
                 run_id=request.run_id,
                 wave_id=request.wave_id,
+                role_id=request.role.role_id,
                 task_id=request.task_id,
+                attempt_id=request.attempt_id,
+                attempt_number=request.attempt_number,
                 model_call_id=model_call_id,
+                prompt_artifact_id=prompt_artifact_id,
                 attributes={"model": self.model, "request_hash": request_hash},
             )
         )
@@ -151,8 +178,12 @@ class GatewaySpecialistClient:
                     name="model_call_failed",
                     run_id=request.run_id,
                     wave_id=request.wave_id,
+                    role_id=request.role.role_id,
                     task_id=request.task_id,
+                    attempt_id=request.attempt_id,
+                    attempt_number=request.attempt_number,
                     model_call_id=model_call_id,
+                    prompt_artifact_id=prompt_artifact_id,
                 )
             )
             raise
@@ -178,8 +209,12 @@ class GatewaySpecialistClient:
                     name="model_call_failed",
                     run_id=request.run_id,
                     wave_id=request.wave_id,
+                    role_id=request.role.role_id,
                     task_id=request.task_id,
+                    attempt_id=request.attempt_id,
+                    attempt_number=request.attempt_number,
                     model_call_id=model_call_id,
+                    prompt_artifact_id=prompt_artifact_id,
                     attributes={
                         "category": "response_schema_validation",
                         "error_count": exc.error_count(),
@@ -199,9 +234,17 @@ class GatewaySpecialistClient:
                 name="model_call_completed",
                 run_id=request.run_id,
                 wave_id=request.wave_id,
+                role_id=request.role.role_id,
                 task_id=request.task_id,
+                attempt_id=request.attempt_id,
+                attempt_number=request.attempt_number,
                 model_call_id=model_call_id,
-                attributes={"provider": response.provider, **usage},
+                prompt_artifact_id=prompt_artifact_id,
+                attributes={
+                    "provider": response.provider,
+                    "model_completion": response.content,
+                    **usage,
+                },
             )
         )
         return output

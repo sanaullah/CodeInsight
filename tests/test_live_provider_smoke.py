@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -30,6 +31,8 @@ from infrastructure.llm.instructor_gateway import (
 pytestmark = pytest.mark.live_provider
 
 _OPT_IN = "CODEINSIGHT_RUN_LIVE_PROVIDER_TEST"
+_REPLAY_RUN_ID = "CODEINSIGHT_LIVE_REPLAY_RUN_ID"
+_REPLAY_PROFILE = "CODEINSIGHT_LIVE_REPLAY_PROFILE"
 _TERMINAL = {"succeeded", "failed", "cancelled", "needs_attention"}
 
 
@@ -137,6 +140,99 @@ async def test_live_structured_output_ab_compatibility(tmp_path: Path) -> None:
 
     print("structured_output_ab=" + json.dumps(results, sort_keys=True))
     assert results[1]["valid_output_rate"] == 1
+
+
+def test_live_instructor_profile_replays_persisted_request(
+    tmp_path: Path,
+) -> None:
+    """Replay request metadata with latest files in an isolated durable ledger."""
+
+    source_run_id = os.getenv(_REPLAY_RUN_ID, "").strip()
+    if not source_run_id:
+        pytest.skip(f"set {_REPLAY_RUN_ID} to an existing local run id")
+    configured = _configured_settings(tmp_path / "unused.db")
+    source_database = ApiSettings.from_environment().database_path
+    connection = sqlite3.connect(
+        f"file:{source_database.as_posix()}?mode=ro",
+        uri=True,
+    )
+    try:
+        row = connection.execute(
+            "SELECT request_json FROM runs WHERE run_id = ?",
+            (source_run_id,),
+        ).fetchone()
+    finally:
+        connection.close()
+    if row is None:
+        pytest.skip("the selected local source run does not exist")
+    request = json.loads(row[0])
+    request.update(
+        {
+            "max_agents": 1,
+            "max_waves": 1,
+            "max_tasks": 1,
+            "max_elapsed_seconds": min(
+                90, int(request.get("max_elapsed_seconds", 90))
+            ),
+        }
+    )
+    replay_profile = os.getenv(_REPLAY_PROFILE, "instructor-json").strip()
+    settings = replace(
+        configured,
+        database_path=tmp_path / "instructor-replay.db",
+        provider_capability_profile=replay_profile,
+    )
+    service = AnalysisService(
+        database_path=settings.database_path,
+        max_concurrent=1,
+        settings=settings,
+    )
+
+    started = time.perf_counter()
+    with TestClient(create_app(service)) as client:
+        submitted = client.post("/api/v1/analyses", json=request)
+        assert submitted.status_code == 202
+        replay_run_id = submitted.json()["run_id"]
+        deadline = time.monotonic() + 120
+        run: dict[str, object] = {}
+        while time.monotonic() < deadline:
+            response = client.get(f"/api/v1/analyses/{replay_run_id}")
+            assert response.status_code == 200
+            run = response.json()
+            if run["status"] in _TERMINAL:
+                break
+            time.sleep(0.25)
+        else:
+            client.delete(f"/api/v1/analyses/{replay_run_id}")
+            pytest.fail("Instructor replay exceeded its 120 second test deadline")
+        intelligence = client.get(
+            f"/api/v1/analyses/{replay_run_id}/intelligence"
+        ).json()
+
+    model_calls = intelligence["model_calls"]
+    total_tokens = sum(
+        int(item["usage"].get("total_tokens", 0)) for item in model_calls
+    )
+    total_cost = sum(float(item["usage"].get("cost_usd", 0)) for item in model_calls)
+    report = {
+        "gateway": replay_profile,
+        "status": run["status"],
+        "latency_ms": round((time.perf_counter() - started) * 1_000, 2),
+        "task_count": len(intelligence["tasks"]),
+        "valid_output_rate": (
+            sum(item["status"] == "succeeded" for item in model_calls)
+            / max(1, len(model_calls))
+        ),
+        "tokens": total_tokens,
+        "cost_usd": total_cost,
+    }
+    print("structured_output_replay=" + json.dumps(report, sort_keys=True))
+    assert run["status"] == "succeeded"
+    assert model_calls
+    assert all(
+        item["provider"].startswith("InstructorOpenAICompatibleGateway")
+        for item in model_calls
+    )
 
 
 def test_real_provider_completes_bounded_durable_api_workflow(

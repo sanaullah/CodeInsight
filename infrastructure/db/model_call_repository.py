@@ -24,6 +24,7 @@ class SqliteModelCallRepository:
         run_id: str,
         wave_id: str,
         task_id: str,
+        attempt_id: str,
         provider: str,
         model: str,
         request_hash: str,
@@ -35,12 +36,13 @@ class SqliteModelCallRepository:
             connection.execute(
                 """
                 INSERT INTO model_calls(
-                    model_call_id, run_id, wave_id, task_id, provider, model,
+                    model_call_id, run_id, wave_id, task_id, attempt_id, provider, model,
                     request_hash, status, usage_json, trace_correlation_json,
                     started_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'running', '{}', ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'running', '{}', ?, ?)
                 ON CONFLICT(task_id, request_hash, provider, model) DO UPDATE SET
-                    status = 'running', started_at = excluded.started_at,
+                    attempt_id = excluded.attempt_id, status = 'running',
+                    started_at = excluded.started_at,
                     completed_at = NULL
                 """,
                 (
@@ -48,6 +50,7 @@ class SqliteModelCallRepository:
                     run_id,
                     wave_id,
                     task_id,
+                    attempt_id,
                     provider,
                     model,
                     request_hash,

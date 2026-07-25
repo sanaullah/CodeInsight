@@ -460,14 +460,18 @@ def test_api_settings_make_provider_and_langfuse_explicit(
     monkeypatch.setenv("CODEINSIGHT_MODEL_BASE_URL", "http://127.0.0.1:1234/v1/")
     monkeypatch.setenv("CODEINSIGHT_DEFAULT_MODEL", "local-fixture")
     monkeypatch.setenv("CODEINSIGHT_LANGFUSE_ENABLED", "true")
+    monkeypatch.setenv("CODEINSIGHT_LANGFUSE_CAPTURE_PROMPTS", "true")
     settings = ApiSettings.from_environment()
     assert settings.model_base_url == "http://127.0.0.1:1234/v1"
     assert settings.default_model == "local-fixture"
     assert settings.langfuse_enabled
+    assert settings.langfuse_capture_prompts
+    assert not settings.langfuse_capture_completions
 
 
 def test_langfuse_export_is_optional_redacted_and_non_blocking(
     monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     calls: list[dict[str, Any]] = []
 
@@ -477,10 +481,10 @@ def test_langfuse_export_is_optional_redacted_and_non_blocking(
 
         def create_event(self, **kwargs: Any) -> None:
             calls.append(kwargs)
-            raise RuntimeError("collector unavailable")
+            raise RuntimeError("collector unavailable with private payload")
 
         def flush(self) -> None:
-            raise RuntimeError("collector unavailable")
+            raise RuntimeError("flush unavailable with private payload")
 
     monkeypatch.setitem(sys.modules, "langfuse", types.SimpleNamespace(Langfuse=FakeLangfuse))
     exporter = LangfuseTraceExporter(
@@ -493,7 +497,19 @@ def test_langfuse_export_is_optional_redacted_and_non_blocking(
         TraceEvent(
             name="model_call",
             run_id="run-1",
-            attributes={"api_token": "secret", "prompt": "private", "count": 2},
+            stage="dispatch_tasks",
+            wave_id="wave-1",
+            role_id="role-1",
+            task_id="task-1",
+            attempt_id="attempt-1",
+            attempt_number=1,
+            model_call_id="call-1",
+            prompt_artifact_id="prompt-1",
+            attributes={
+                "api_token": "secret",
+                "prompt_text": "private",
+                "input_tokens": 2,
+            },
         )
     )
     assert time.perf_counter() - started < 0.1
@@ -503,9 +519,18 @@ def test_langfuse_export_is_optional_redacted_and_non_blocking(
             break
         time.sleep(0.01)
     assert calls
+    assert calls[0]["trace_context"]["trace_id"]
+    assert len(calls[0]["trace_context"]["trace_id"]) == 32
+    assert calls[0]["metadata"]["attempt_id"] == "attempt-1"
+    assert calls[0]["metadata"]["prompt_artifact_id"] == "prompt-1"
     assert _redact(
-        {"api_token": "secret", "prompt": "private", "count": 2}, False
-    ) == {"api_token": "[redacted]", "prompt": "[omitted]", "count": 2}
+        {"api_token": "secret", "prompt": "private", "input_tokens": 2}
+    ) == {
+        "api_token": "[redacted]",
+        "prompt": "[omitted]",
+        "input_tokens": 2,
+    }
+    assert "private payload" not in caplog.text
 
 
 def test_langfuse_import_or_configuration_failure_disables_exporter(
@@ -528,20 +553,66 @@ def test_langfuse_import_or_configuration_failure_disables_exporter(
     exporter.close()
 
 
-def test_langfuse_content_opt_in_preserves_content_but_redacts_credentials() -> None:
+def test_langfuse_capture_controls_are_independent_and_recursive() -> None:
     assert _redact(
         {
-            "prompt": "inspect repository",
-            "completion": "finding",
+            "prompt_text": "inspect repository",
+            "model_completion": {"finding": "bounded"},
             "source_content": "code",
-            "api_key": "secret",
-            "password": "secret",
+            "nested": {
+                "api_key": "secret",
+                "input_tokens": 7,
+                "project_path": "C:/private",
+            },
         },
-        True,
+        capture_prompts=True,
+        capture_completions=False,
     ) == {
-        "prompt": "inspect repository",
-        "completion": "finding",
-        "source_content": "code",
-        "api_key": "[redacted]",
-        "password": "[redacted]",
+        "prompt_text": "inspect repository",
+        "model_completion": "[omitted]",
+        "source_content": "[omitted]",
+        "nested": {
+            "api_key": "[redacted]",
+            "input_tokens": 7,
+            "project_path": "[omitted]",
+        },
     }
+
+
+def test_langfuse_queue_is_bounded_and_emit_after_close_is_noop(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entered = threading.Event()
+    release = threading.Event()
+    calls = 0
+
+    class BlockingLangfuse:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def create_event(self, **_kwargs: Any) -> None:
+            nonlocal calls
+            calls += 1
+            entered.set()
+            release.wait(timeout=1)
+
+        def flush(self) -> None:
+            return None
+
+    monkeypatch.setitem(
+        sys.modules, "langfuse", types.SimpleNamespace(Langfuse=BlockingLangfuse)
+    )
+    exporter = LangfuseTraceExporter(
+        public_key="public",
+        secret_key="secret",
+        host="http://localhost:3000",
+        max_pending_events=1,
+    )
+    exporter.emit(TraceEvent(name="first", run_id="run-1"))
+    assert entered.wait(timeout=1)
+    exporter.emit(TraceEvent(name="dropped", run_id="run-1"))
+    assert exporter.dropped_events == 1
+    release.set()
+    exporter.close()
+    exporter.emit(TraceEvent(name="after-close", run_id="run-1"))
+    assert calls == 1

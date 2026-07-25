@@ -77,6 +77,8 @@ class SpecialistRequest(ProposalModel):
     run_id: str
     wave_id: str
     task_id: str
+    attempt_id: str = "untracked-attempt"
+    attempt_number: int = Field(default=1, ge=1)
     role: RoleSpec
     files: tuple[SpecialistFile, ...]
     token_budget: int
@@ -323,6 +325,8 @@ class TrustedSpecialistHarness:
                     run_id=lease.run_id,
                     wave_id=lease.wave_id,
                     task_id=lease.task_id,
+                    attempt_id=lease.attempt_id,
+                    attempt_number=lease.attempt_number,
                     role=role,
                     files=tuple(specialist_files),
                     token_budget=int(
@@ -381,7 +385,10 @@ class TrustedSpecialistHarness:
             {
                 "run_id": lease.run_id,
                 "wave_id": lease.wave_id,
+                "role_id": lease.role_id,
                 "task_id": lease.task_id,
+                "attempt_id": lease.attempt_id,
+                "attempt_number": lease.attempt_number,
                 "candidate_count": len(processed.candidates),
                 "accepted_count": sum(
                     verdict.disposition == "accepted"

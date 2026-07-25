@@ -203,16 +203,46 @@ async def test_permanent_task_failure_is_not_retried_and_emits_terminal_event(
         task = repository.get_task("permanent-task")
         assert task["attempt_count"] == 1
         assert task["error"]["message"] == "evidence contract rejected"
-        assert events[-1] == (
-            "task_failed",
-            {
-                "run_id": "run-1",
-                "wave_id": "wave-1",
-                "task_id": "permanent-task",
-                "status": "failed",
-                "reason": "evidence contract rejected",
-            },
+        event_type, event_data = events[-1]
+        assert event_type == "task_failed"
+        assert event_data == {
+            "run_id": "run-1",
+            "wave_id": "wave-1",
+            "role_id": "role-1",
+            "task_id": "permanent-task",
+            "attempt_id": event_data["attempt_id"],
+            "attempt_number": 1,
+            "status": "failed",
+            "reason": "evidence contract rejected",
+        }
+
+
+@pytest.mark.asyncio
+async def test_provider_declared_nonretryable_failure_stops_durable_retries(
+    tmp_path: Path,
+) -> None:
+    class NonRetryableProviderError(RuntimeError):
+        retryable = False
+
+    async with _repository(tmp_path) as (_ledger, repository):
+        repository.enqueue(_task("provider-contract-task", max_attempts=3))
+        attempts = 0
+
+        async def invalid(_lease: Any, _context: TaskContext) -> TaskResult:
+            nonlocal attempts
+            attempts += 1
+            raise NonRetryableProviderError("sanitized provider contract failure")
+
+        scheduler = NativeTaskScheduler(
+            repository,
+            {"inspect": invalid},
+            cancellation_poll_seconds=0.001,
         )
+        counts = await scheduler.run_until_idle(run_id="run-1")
+
+        assert counts == {"failed": 1}
+        assert attempts == 1
+        assert repository.get_task("provider-contract-task")["attempt_count"] == 1
 
 
 @pytest.mark.asyncio

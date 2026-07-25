@@ -73,11 +73,13 @@ class ProviderUnavailable(RuntimeError):
         category: str = "provider_unavailable",
         http_status: int | None = None,
         usage: ModelUsage | None = None,
+        retryable: bool = True,
     ) -> None:
         super().__init__(message)
         self.category = category
         self.http_status = http_status
         self.usage = usage or ModelUsage()
+        self.retryable = retryable
 
 
 class BoundedModelGateway:

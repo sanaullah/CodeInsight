@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from dataclasses import dataclass
 from enum import StrEnum
 from time import monotonic
@@ -24,10 +25,13 @@ from application.model_gateway import (
     ProviderUnavailable,
 )
 
+logging.getLogger("instructor").setLevel(logging.CRITICAL + 1)
+
 
 class StructuredOutputMode(StrEnum):
     JSON = "json"
     JSON_SCHEMA = "json_schema"
+    TOOLS = "tools"
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +58,11 @@ PROVIDER_CAPABILITY_PROFILES = {
         name="instructor-json-schema",
         instructor_supported=True,
         mode=StructuredOutputMode.JSON_SCHEMA,
+    ),
+    "instructor-tools": ProviderCapabilityProfile(
+        name="instructor-tools",
+        instructor_supported=True,
+        mode=StructuredOutputMode.TOOLS,
     ),
 }
 
@@ -89,11 +98,12 @@ class InstructorOpenAICompatibleGateway(ModelGateway):
             api_key=api_key or "not-required",
             max_retries=0,
         )
-        mode = (
-            instructor.Mode.JSON_SCHEMA
-            if profile.mode is StructuredOutputMode.JSON_SCHEMA
-            else instructor.Mode.JSON
-        )
+        modes = {
+            StructuredOutputMode.JSON: instructor.Mode.JSON,
+            StructuredOutputMode.JSON_SCHEMA: instructor.Mode.JSON_SCHEMA,
+            StructuredOutputMode.TOOLS: instructor.Mode.TOOLS,
+        }
+        mode = modes[profile.mode]
         self._instructor = instructor.from_openai(self._client, mode=mode)
 
     async def complete(self, request: ModelRequest) -> ModelResponse:
@@ -102,6 +112,7 @@ class InstructorOpenAICompatibleGateway(ModelGateway):
             raise ProviderUnavailable(
                 "provider_contract_error category=missing_response_model",
                 category="missing_response_model",
+                retryable=False,
             )
         started = monotonic()
         usage = ModelUsage()
@@ -266,6 +277,7 @@ def _validation_error(
         "provider_contract_error category=response_schema_validation",
         category="response_schema_validation",
         usage=usage,
+        retryable=False,
     )
 
 
@@ -274,4 +286,5 @@ def _budget_error(usage: ModelUsage, kind: str) -> ProviderUnavailable:
         f"provider_budget_error category=task_{kind}_budget_exhausted",
         category=f"task_{kind}_budget_exhausted",
         usage=usage,
+        retryable=False,
     )

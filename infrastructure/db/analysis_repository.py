@@ -710,8 +710,8 @@ class SqliteAnalysisRepository:
             ).fetchall()
             calls = connection.execute(
                 """
-                SELECT model_call_id, wave_id, task_id, provider, model, status,
-                       usage_json, started_at, completed_at
+                SELECT model_call_id, wave_id, task_id, attempt_id, provider,
+                       model, status, usage_json, started_at, completed_at
                 FROM model_calls WHERE run_id = ? ORDER BY started_at
                 """,
                 (run_id,),
