@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -312,6 +313,93 @@ def test_planner_rejects_untrusted_generated_role() -> None:
     )
     with pytest.raises(ValueError, match="untrusted tool"):
         RepositoryRolePlanner.validate_role(role)
+
+
+def test_planner_rejects_untrusted_capability_and_out_of_budget_wave() -> None:
+    role = RoleSpec(
+        role_id="bad-capability",
+        name="Bad capability",
+        mission="Escape",
+        rationale="Untrusted",
+        coverage_targets=("x",),
+        required_capabilities=("network-administration",),
+        allowed_tools=tuple(TRUSTED_TOOLS),
+        model_policy="strong",
+        token_budget=1,
+        time_budget_seconds=1,
+        completion_criteria=("done",),
+    )
+    with pytest.raises(ValueError, match="untrusted capability"):
+        RepositoryRolePlanner.validate_role(role)
+
+    snapshot = _runtime_snapshot_fixture()
+    with pytest.raises(ValueError, match="wave number"):
+        RepositoryRolePlanner().plan(
+            run_id="run-1",
+            snapshot=snapshot,
+            files=[],
+            target_paths=(),
+            mode=AnalysisMode.QUICK,
+            budget=RunBudget(max_waves=1),
+            wave_number=2,
+        )
+
+
+def _runtime_snapshot_fixture() -> Any:
+    from domain.contracts import RepositorySnapshot
+
+    return RepositorySnapshot(
+        snapshot_id="snapshot-1",
+        project_id="project-1",
+        canonical_path="C:/fixture",
+        identity_hash="identity-1",
+        configuration_hash="config-1",
+        scanner_version="test",
+        created_at=datetime.now(UTC),
+    )
+
+
+def test_follow_up_planning_is_deterministic_deduplicated_and_bounded() -> None:
+    files = [
+        {
+            "relative_path": "app.py",
+            "file_id": "file-1",
+            "artifact_id": "artifact-1",
+            "language": "python",
+            "classification": "source",
+        }
+    ]
+    planner = RepositoryRolePlanner()
+    plan = planner.plan(
+        run_id="run-1",
+        snapshot=_runtime_snapshot_fixture(),
+        files=files,
+        target_paths=("app.py",),
+        mode=AnalysisMode.DEEP,
+        budget=RunBudget(max_specialists=2, max_tasks=2, max_waves=2),
+        wave_number=2,
+        remaining_gaps=(
+            "uncertainty:runtime",
+            "security:input",
+            "uncertainty:runtime",
+        ),
+    )
+
+    assert len(plan.roles) == 2
+    assert plan.reserved_follow_up
+    assert plan.roles[0].required_capabilities == ("security",)
+    assert plan.roles[1].required_capabilities == ("verification",)
+    assert plan.coverage_targets == ("security:input", "uncertainty:runtime")
+    assert planner.plan(
+        run_id="run-1",
+        snapshot=_runtime_snapshot_fixture(),
+        files=files,
+        target_paths=("app.py",),
+        mode=AnalysisMode.DEEP,
+        budget=RunBudget(max_specialists=2, max_tasks=2, max_waves=2),
+        wave_number=2,
+        remaining_gaps=("security:input", "uncertainty:runtime"),
+    ).wave_id == plan.wave_id
 
 
 def test_verified_source_cache_reuses_unchanged_body_and_detects_tamper(

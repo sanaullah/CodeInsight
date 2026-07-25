@@ -3,9 +3,13 @@ from __future__ import annotations
 import asyncio
 import json
 import sys
+import threading
 import time
 import types
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import replace
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
@@ -60,6 +64,50 @@ class CountingGateway:
             model=request.model,
             usage=ModelUsage(input_tokens=self.tokens),
         )
+
+
+@contextmanager
+def _openai_compatible_server(
+    *,
+    status: int = 200,
+    response_body: dict[str, Any] | None = None,
+) -> Iterator[tuple[str, dict[str, Any]]]:
+    captured: dict[str, Any] = {}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802 - stdlib HTTP handler API
+            content_length = int(self.headers["Content-Length"])
+            captured.update(
+                path=self.path,
+                authorization=self.headers.get("Authorization"),
+                content_type=self.headers.get("Content-Type"),
+                body=json.loads(self.rfile.read(content_length)),
+            )
+            body = response_body or {
+                "id": "local-request-1",
+                "model": "local-served-model",
+                "choices": [{"message": {"content": '{"findings": []}'}}],
+                "usage": {"prompt_tokens": 7, "completion_tokens": 2},
+            }
+            encoded = json.dumps(body).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, _format: str, *_args: object) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{server.server_port}/v1", captured
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 @pytest.mark.asyncio
@@ -146,6 +194,40 @@ async def test_openai_compatible_gateway_maps_json_and_usage(
 
 
 @pytest.mark.asyncio
+async def test_openai_compatible_gateway_uses_real_chat_completions_contract() -> None:
+    with _openai_compatible_server() as (base_url, captured):
+        response = await OpenAICompatibleGateway(
+            base_url=base_url,
+            api_key="local-secret",
+        ).complete(_request())
+
+    assert captured["path"] == "/v1/chat/completions"
+    assert captured["authorization"] == "Bearer local-secret"
+    assert captured["content_type"] == "application/json"
+    assert captured["body"] == {
+        "model": "fixture",
+        "messages": [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "{}"},
+        ],
+        "temperature": 0,
+        "max_tokens": 10,
+        "response_format": {"type": "json_object"},
+    }
+    assert response.provider == "openai-compatible"
+    assert response.model == "local-served-model"
+    assert response.provider_request_id == "local-request-1"
+    assert response.usage.total_tokens == 9
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_gateway_classifies_real_http_failure() -> None:
+    with _openai_compatible_server(status=503) as (base_url, _captured):
+        with pytest.raises(RuntimeError, match="unavailable"):
+            await OpenAICompatibleGateway(base_url=base_url).complete(_request())
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("body", "message"),
     [
@@ -174,6 +256,69 @@ async def test_openai_compatible_gateway_classifies_bad_responses(
         await OpenAICompatibleGateway(base_url="http://localhost/v1").complete(
             _request()
         )
+
+
+@pytest.mark.asyncio
+async def test_bounded_gateway_does_not_commit_failed_or_over_budget_usage() -> None:
+    class FixedGateway:
+        def __init__(self, response: ModelResponse | Exception) -> None:
+            self.response = response
+
+        async def complete(self, _request: ModelRequest) -> ModelResponse:
+            if isinstance(self.response, Exception):
+                raise self.response
+            return self.response
+
+    failed = BoundedModelGateway(FixedGateway(RuntimeError("provider failed")))
+    with pytest.raises(RuntimeError, match="provider failed"):
+        await failed.complete(_request())
+    assert (await failed.usage_for_run("run-1")).total_tokens == 0
+
+    over_tokens = BoundedModelGateway(
+        FixedGateway(
+            ModelResponse(
+                content={},
+                provider="fixture",
+                model="fixture",
+                usage=ModelUsage(input_tokens=11),
+            )
+        )
+    )
+    with pytest.raises(ModelBudgetExceeded, match="response exceeded.*token"):
+        await over_tokens.complete(_request())
+    assert (await over_tokens.usage_for_run("run-1")).total_tokens == 0
+
+    over_cost = BoundedModelGateway(
+        FixedGateway(
+            ModelResponse(
+                content={},
+                provider="fixture",
+                model="fixture",
+                usage=ModelUsage(cost_usd=2),
+            )
+        )
+    )
+    with pytest.raises(ModelBudgetExceeded, match="response exceeded.*cost"):
+        await over_cost.complete(_request())
+    assert (await over_cost.usage_for_run("run-1")).cost_usd == 0
+
+
+@pytest.mark.asyncio
+async def test_bounded_gateway_timeout_and_run_budgets_are_isolated() -> None:
+    with pytest.raises(ValueError, match="greater than zero"):
+        BoundedModelGateway(CountingGateway(), max_concurrent=0)
+
+    timed = BoundedModelGateway(CountingGateway(delay=0.05))
+    with pytest.raises(TimeoutError):
+        await timed.complete(replace(_request(), timeout_seconds=0.001))
+
+    gateway = BoundedModelGateway(CountingGateway(tokens=2))
+    await gateway.configure_run_budget("small", max_tokens=1, max_cost_usd=1)
+    with pytest.raises(ModelBudgetExceeded):
+        await gateway.complete(_request("small"))
+    await gateway.complete(_request("independent"))
+    assert (await gateway.usage_for_run("small")).total_tokens == 0
+    assert (await gateway.usage_for_run("independent")).total_tokens == 2
 
 
 def test_api_settings_make_provider_and_langfuse_explicit(
@@ -229,3 +374,42 @@ def test_langfuse_export_is_optional_redacted_and_non_blocking(
     assert _redact(
         {"api_token": "secret", "prompt": "private", "count": 2}, False
     ) == {"api_token": "[redacted]", "prompt": "[omitted]", "count": 2}
+
+
+def test_langfuse_import_or_configuration_failure_disables_exporter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class BrokenLangfuse:
+        def __init__(self, **_kwargs: Any) -> None:
+            raise RuntimeError("invalid optional configuration")
+
+    monkeypatch.setitem(
+        sys.modules, "langfuse", types.SimpleNamespace(Langfuse=BrokenLangfuse)
+    )
+    exporter = LangfuseTraceExporter(
+        public_key="",
+        secret_key="",
+        host="http://unavailable.invalid",
+    )
+    assert not exporter.enabled
+    exporter.emit(TraceEvent(name="ignored", run_id="run-1"))
+    exporter.close()
+
+
+def test_langfuse_content_opt_in_preserves_content_but_redacts_credentials() -> None:
+    assert _redact(
+        {
+            "prompt": "inspect repository",
+            "completion": "finding",
+            "source_content": "code",
+            "api_key": "secret",
+            "password": "secret",
+        },
+        True,
+    ) == {
+        "prompt": "inspect repository",
+        "completion": "finding",
+        "source_content": "code",
+        "api_key": "[redacted]",
+        "password": "[redacted]",
+    }

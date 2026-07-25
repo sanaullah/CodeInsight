@@ -51,6 +51,22 @@ def test_environment_rejects_invalid_concurrency(
         ApiSettings.from_environment()
 
 
+def test_environment_uses_openai_compatible_fallbacks_and_blank_url_is_offline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_BASE", "http://127.0.0.1:8080/v1/")
+    monkeypatch.setenv("OPENAI_API_KEY", "fallback-key")
+    monkeypatch.setenv("DEFAULT_MODEL", "fallback-model")
+    settings = ApiSettings.from_environment()
+    assert settings.model_base_url == "http://127.0.0.1:8080/v1"
+    assert settings.model_api_key == "fallback-key"
+    assert settings.default_model == "fallback-model"
+
+    monkeypatch.setenv("CODEINSIGHT_MODEL_BASE_URL", "   ")
+    monkeypatch.delenv("OPENAI_API_BASE")
+    assert ApiSettings.from_environment().model_base_url is None
+
+
 def test_language_capability_helpers_are_deterministic() -> None:
     assert get_language_for_extension(".PY") == Language.PYTHON
     assert get_language_for_extension(".unknown") is None

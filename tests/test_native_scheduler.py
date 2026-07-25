@@ -14,7 +14,12 @@ import pytest
 from domain.contracts import AnalysisTask, RoleSpec
 from infrastructure.db.run_ledger import SqliteRunLedger
 from infrastructure.db.task_repository import SqliteTaskRepository
-from workflow.task_scheduler import NativeTaskScheduler, TaskContext, TaskResult
+from workflow.task_scheduler import (
+    NativeTaskScheduler,
+    PermanentTaskError,
+    TaskContext,
+    TaskResult,
+)
 
 
 def _role() -> RoleSpec:
@@ -41,6 +46,26 @@ def test_native_workflow_exports_only_native_scheduler_contracts() -> None:
         "TaskContext",
         "TaskResult",
     ]
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"max_concurrent": 0}, "max_concurrent"),
+        ({"lease_seconds": 0}, "lease_seconds"),
+        ({"retry_delay_seconds": -1}, "retry_delay_seconds"),
+        ({"cancellation_poll_seconds": 0}, "cancellation_poll_seconds"),
+    ],
+)
+def test_scheduler_rejects_unsafe_runtime_limits(
+    tmp_path: Path, kwargs: dict[str, float], message: str
+) -> None:
+    ledger = SqliteRunLedger(tmp_path / "application.sqlite3")
+    try:
+        with pytest.raises(ValueError, match=message):
+            NativeTaskScheduler(SqliteTaskRepository(ledger), {}, **kwargs)
+    finally:
+        ledger.close()
 
 
 def _task(
@@ -148,6 +173,45 @@ async def test_scheduler_retries_then_succeeds(tmp_path: Path) -> None:
         assert counts == {"succeeded": 1}
         assert attempts == 2
         assert repository.get_task("retry-task")["attempt_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_permanent_task_failure_is_not_retried_and_emits_terminal_event(
+    tmp_path: Path,
+) -> None:
+    async with _repository(tmp_path) as (_ledger, repository):
+        repository.enqueue(_task("permanent-task", max_attempts=3))
+        events: list[tuple[str, dict[str, Any]]] = []
+        attempts = 0
+
+        async def invalid(_lease: Any, _context: TaskContext) -> TaskResult:
+            nonlocal attempts
+            attempts += 1
+            raise PermanentTaskError("evidence contract rejected")
+
+        scheduler = NativeTaskScheduler(
+            repository,
+            {"inspect": invalid},
+            cancellation_poll_seconds=0.001,
+            event_sink=lambda event, data: events.append((event, data)),
+        )
+        counts = await scheduler.run_until_idle(run_id="run-1")
+
+        assert counts == {"failed": 1}
+        assert attempts == 1
+        task = repository.get_task("permanent-task")
+        assert task["attempt_count"] == 1
+        assert task["error"]["message"] == "evidence contract rejected"
+        assert events[-1] == (
+            "task_failed",
+            {
+                "run_id": "run-1",
+                "wave_id": "wave-1",
+                "task_id": "permanent-task",
+                "status": "failed",
+                "reason": "evidence contract rejected",
+            },
+        )
 
 
 @pytest.mark.asyncio

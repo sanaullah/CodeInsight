@@ -146,9 +146,15 @@ class RepositoryIndexer:
         root = Path(project_path).expanduser().resolve(strict=True)
         if not root.is_dir():
             raise ValueError(f"repository path is not a directory: {root}")
+        extensions = {
+            extension.lower()
+            if extension.startswith(".")
+            else f".{extension.lower()}"
+            for extension in include_extensions
+        }
         configuration = {
             "selected_directories": sorted(selected_directories),
-            "include_extensions": sorted(include_extensions),
+            "include_extensions": sorted(extensions),
             "base_commit": base_commit,
             "max_file_bytes": self.max_file_bytes,
             "scanner_version": SCANNER_VERSION,
@@ -158,10 +164,6 @@ class RepositoryIndexer:
         owners = _load_codeowners(root)
         paths = _discover_paths(root, selected_directories)
         scanned: list[_ScannedFile] = []
-        extensions = {
-            extension if extension.startswith(".") else f".{extension}"
-            for extension in include_extensions
-        }
         for path in paths:
             if len(scanned) >= self.max_files:
                 break

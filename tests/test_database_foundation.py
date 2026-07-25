@@ -12,6 +12,7 @@ import pytest
 
 from infrastructure.db.database import (
     SCHEMA_VERSION,
+    checkpoint_database,
     database_connection,
     initialize_database,
     open_database,
@@ -60,6 +61,65 @@ def test_database_rejects_schema_newer_than_application(tmp_path: Path) -> None:
         assert "newer than supported" in str(exc)
     else:
         raise AssertionError("newer schemas must not be opened")
+
+
+@pytest.mark.parametrize("column", ["description", "checksum"])
+def test_database_rejects_tampered_applied_migration(
+    tmp_path: Path, column: str
+) -> None:
+    database_path = tmp_path / "codeinsight.db"
+    initialize_database(database_path)
+    with database_connection(database_path) as connection:
+        connection.execute(
+            f"UPDATE schema_migrations SET {column} = 'tampered' WHERE version = ?",
+            (SCHEMA_VERSION,),
+        )
+
+    with pytest.raises(RuntimeError, match="canonical schema source"):
+        initialize_database(database_path)
+
+
+def test_database_failed_write_rolls_back_and_ledger_close_is_idempotent(
+    tmp_path: Path,
+) -> None:
+    ledger = SqliteRunLedger(tmp_path / "codeinsight.db")
+
+    def invalid_write(connection: sqlite3.Connection) -> None:
+        connection.execute(
+            """
+            INSERT INTO projects(project_id, canonical_path, display_name, created_at, updated_at)
+            VALUES ('project-1', '/first', 'first', 'now', 'now')
+            """
+        )
+        raise RuntimeError("abort transaction")
+
+    with pytest.raises(RuntimeError, match="abort transaction"):
+        ledger.write_transaction(invalid_write)
+    with database_connection(ledger.database_path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM projects").fetchone()[0] == 0
+        assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+
+    ledger.close()
+    ledger.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        ledger.create_run(
+            run_id="closed",
+            submission_key="closed",
+            request=_request(),
+        )
+
+
+def test_checkpoint_supports_passive_and_truncate_modes(tmp_path: Path) -> None:
+    database_path = tmp_path / "codeinsight.db"
+    ledger = SqliteRunLedger(database_path)
+    ledger.create_run(run_id="run-1", submission_key="request-1", request=_request())
+    ledger.close()
+
+    passive = checkpoint_database(database_path)
+    truncated = checkpoint_database(database_path, truncate=True)
+
+    assert passive[0] == 0
+    assert truncated == (0, 0, 0)
 
 
 def test_schema_and_pragmas_have_one_canonical_python_source() -> None:

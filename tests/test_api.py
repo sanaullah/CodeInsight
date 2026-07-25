@@ -75,3 +75,18 @@ def test_analysis_rejects_invalid_project_path(tmp_path: Path) -> None:
         )
     assert response.status_code == 422
     assert "does not exist" in response.json()["detail"]
+
+
+def test_missing_run_routes_and_list_limits_are_truthful(tmp_path: Path) -> None:
+    app = create_app(
+        AnalysisService(FakeExecutor(), database_path=tmp_path / "codeinsight.db")
+    )
+    with TestClient(app) as client:
+        assert client.get("/api/v1/analyses/missing").status_code == 404
+        assert (
+            client.get("/api/v1/analyses/missing/intelligence").status_code == 404
+        )
+        assert client.delete("/api/v1/analyses/missing").status_code == 404
+        assert client.get("/api/v1/analyses?limit=0").status_code == 422
+        assert client.get("/api/v1/analyses?limit=101").status_code == 422
+        assert client.get("/api/v1/analyses?limit=1").json() == []

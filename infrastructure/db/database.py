@@ -418,6 +418,30 @@ def initialize_database(
                     f"supported schema {SCHEMA_VERSION}"
                 )
 
+            applied_migrations = connection.execute(
+                """
+                SELECT version, description, checksum
+                FROM schema_migrations
+                WHERE version <= ?
+                ORDER BY version
+                """,
+                (SCHEMA_VERSION,),
+            ).fetchall()
+            for applied in applied_migrations:
+                version = int(applied["version"])
+                expected_description, statements = MIGRATIONS[version]
+                expected_checksum = hashlib.sha256(
+                    "\n".join(statements).encode("utf-8")
+                ).hexdigest()
+                if (
+                    applied["description"] != expected_description
+                    or applied["checksum"] != expected_checksum
+                ):
+                    raise RuntimeError(
+                        f"database migration {version} does not match "
+                        "the canonical schema source"
+                    )
+
             for version in range(current_version + 1, SCHEMA_VERSION + 1):
                 description, statements = MIGRATIONS[version]
                 for statement in statements:

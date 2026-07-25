@@ -139,6 +139,48 @@ def test_unchanged_snapshot_is_reused_without_duplicate_metadata(tmp_path: Path)
         ledger.close()
 
 
+def test_content_and_configuration_changes_invalidate_snapshot_cache(
+    tmp_path: Path,
+) -> None:
+    root, _commit = _project(tmp_path)
+    ledger, repository, indexer = _indexer(tmp_path)
+    try:
+        first = indexer.build(root)
+        (root / "pkg" / "b.py").write_text(
+            "def helper():\n    return 2\n", encoding="utf-8"
+        )
+        changed = indexer.build(root)
+        python_only = indexer.build(root, include_extensions=("py",))
+
+        assert not changed.cached
+        assert changed.snapshot.snapshot_id != first.snapshot.snapshot_id
+        assert "pkg/b.py" in changed.changed_paths
+        assert not python_only.cached
+        assert python_only.snapshot.snapshot_id != changed.snapshot.snapshot_id
+        assert "frontend.ts" not in python_only.snapshot.included_paths
+        assert repository.get(first.snapshot.snapshot_id) is not None
+        assert repository.get(changed.snapshot.snapshot_id) is not None
+        assert indexer.build(root, include_extensions=(".py",)).cached
+    finally:
+        ledger.close()
+
+
+def test_empty_repository_and_file_path_are_handled_truthfully(tmp_path: Path) -> None:
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    file_path = tmp_path / "not-a-directory.py"
+    file_path.write_text("x = 1\n", encoding="utf-8")
+    ledger, _repository, indexer = _indexer(tmp_path)
+    try:
+        result = indexer.build(empty)
+        assert result.file_count == 0
+        assert result.target_paths == ()
+        with pytest.raises(ValueError, match="not a directory"):
+            indexer.build(file_path)
+    finally:
+        ledger.close()
+
+
 def test_repeated_symbol_calls_persist_as_one_graph_edge(tmp_path: Path) -> None:
     root = tmp_path / "repository"
     root.mkdir()
@@ -169,9 +211,12 @@ def test_repeated_symbol_calls_persist_as_one_graph_edge(tmp_path: Path) -> None
         ledger.close()
 
 
-def test_non_git_repository_gets_deterministic_content_snapshot(tmp_path: Path) -> None:
+def test_non_git_repository_gets_deterministic_content_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     root = tmp_path / "plain"
     root.mkdir()
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
     (root / "module.py").write_text("VALUE = 1\n", encoding="utf-8")
     ledger, _repository, indexer = _indexer(tmp_path)
     try:
