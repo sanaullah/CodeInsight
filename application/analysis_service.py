@@ -37,6 +37,7 @@ from infrastructure.db.database import checkpoint_database
 from infrastructure.db.finding_repository import SqliteFindingRepository
 from infrastructure.db.history_repository import SqliteHistoryRepository
 from infrastructure.db.model_call_repository import SqliteModelCallRepository
+from infrastructure.db.prompt_artifact_repository import SqlitePromptArtifactRepository
 from infrastructure.db.run_ledger import SqliteRunLedger
 from infrastructure.db.semantic_architecture_query import (
     SqliteSemanticArchitectureQuery,
@@ -119,6 +120,7 @@ class NativeAnalysisExecutor:
             gateway=self.gateway,
             model=request.model_name or self.default_model,
             calls=SqliteModelCallRepository(self.ledger),
+            prompts=SqlitePromptArtifactRepository(self.ledger),
             traces=self.tracer,
             max_output_tokens=min(8_000, budget.max_tokens),
         )

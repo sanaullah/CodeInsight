@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 6
 DEFAULT_BUSY_TIMEOUT_MS = 5_000
 
 _MIGRATION_1 = (
@@ -605,12 +605,45 @@ _MIGRATION_5 = (
     "ON semantic_projection_state(extractor_version, status)",
 )
 
+_MIGRATION_6 = (
+    """
+    CREATE TABLE specialist_prompt_artifacts (
+        prompt_artifact_id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+        wave_id TEXT NOT NULL REFERENCES waves(wave_id) ON DELETE CASCADE,
+        role_id TEXT NOT NULL REFERENCES role_specs(role_id) ON DELETE CASCADE,
+        task_id TEXT NOT NULL REFERENCES tasks(task_id) ON DELETE CASCADE,
+        prompt_template TEXT NOT NULL,
+        prompt_version INTEGER NOT NULL CHECK (prompt_version >= 1),
+        prompt_text TEXT NOT NULL,
+        request_hash TEXT NOT NULL,
+        source_content_included INTEGER NOT NULL DEFAULT 0
+            CHECK (source_content_included = 0),
+        redaction_json TEXT NOT NULL DEFAULT '{}',
+        retention_policy TEXT NOT NULL,
+        retention_days INTEGER NOT NULL CHECK (retention_days >= 1),
+        created_at TEXT NOT NULL,
+        UNIQUE(task_id, request_hash, prompt_template, prompt_version)
+    )
+    """,
+    """
+    CREATE TRIGGER specialist_prompt_artifacts_immutable
+    BEFORE UPDATE ON specialist_prompt_artifacts
+    BEGIN
+        SELECT RAISE(ABORT, 'specialist prompt artifacts are immutable');
+    END
+    """,
+    "CREATE INDEX idx_specialist_prompts_run_created "
+    "ON specialist_prompt_artifacts(run_id, created_at)",
+)
+
 MIGRATIONS: dict[int, tuple[str, tuple[str, ...]]] = {
     1: ("initial durable application ledger", _MIGRATION_1),
     2: ("durable finding review lifecycle", _MIGRATION_2),
     3: ("durable local settings and review presets", _MIGRATION_3),
     4: ("evidence-derived semantic architecture ledger", _MIGRATION_4),
     5: ("semantic extractor projection version state", _MIGRATION_5),
+    6: ("immutable redacted specialist prompt artifacts", _MIGRATION_6),
 }
 
 

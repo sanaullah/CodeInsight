@@ -41,6 +41,25 @@ def test_database_initialization_is_idempotent_and_enables_wal(tmp_path: Path) -
             range(1, SCHEMA_VERSION + 1)
         )
         assert len(migrations[0]["checksum"]) == 64
+        prompt_columns = {
+            row["name"]
+            for row in connection.execute(
+                "PRAGMA table_info(specialist_prompt_artifacts)"
+            ).fetchall()
+        }
+        assert {
+            "run_id",
+            "wave_id",
+            "role_id",
+            "task_id",
+            "prompt_template",
+            "prompt_version",
+            "prompt_text",
+            "request_hash",
+            "redaction_json",
+            "retention_policy",
+            "retention_days",
+        }.issubset(prompt_columns)
 
     assert list(tmp_path.rglob("*.db")) == [database_path]
 

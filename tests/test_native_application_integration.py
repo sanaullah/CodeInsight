@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -170,8 +171,38 @@ async def test_native_application_path_persists_full_intelligence(
     assert intelligence.findings
     assert intelligence.coverage
     assert len(intelligence.model_calls) == gateway.calls
+    assert len(intelligence.prompt_artifacts) == gateway.calls
+    prompt = intelligence.prompt_artifacts[0]
+    assert prompt["prompt_template"] == "native-specialist-system"
+    assert prompt["prompt_version"] == 2
+    assert len(prompt["request_hash"]) == 64
+    assert prompt["role_id"]
+    assert prompt["task_id"]
+    assert prompt["redaction"] == {
+        "provider_secrets_included": False,
+        "source_content_included": False,
+        "user_prompt_persisted": False,
+    }
+    assert prompt["retention_policy"] == "application-default"
+    assert prompt["retention_days"] == 90
+    assert "Specialist contract:" in prompt["prompt_text"]
+    assert "return calculate(2)" not in prompt["prompt_text"]
+    assert "def calculate(value)" not in prompt["prompt_text"]
     assert intelligence.usage["total_tokens"] == gateway.calls * 30
     assert gateway.max_active <= 2
+    with database_connection(database_path) as connection:
+        with pytest.raises(
+            sqlite3.IntegrityError,
+            match="specialist prompt artifacts are immutable",
+        ):
+            connection.execute(
+                """
+                UPDATE specialist_prompt_artifacts
+                SET prompt_text = 'tampered'
+                WHERE prompt_artifact_id = ?
+                """,
+                (prompt["prompt_artifact_id"],),
+            )
     await service.close()
 
 
@@ -358,6 +389,12 @@ def test_fastapi_exposes_native_status_intelligence_recovery_and_ui(
         assert intelligence["roles"]
         assert intelligence["coverage"]
         assert intelligence["findings"]
+        assert intelligence["prompt_artifacts"]
+        assert all(
+            item["redaction"]["source_content_included"] is False
+            and item["redaction"]["provider_secrets_included"] is False
+            for item in intelligence["prompt_artifacts"]
+        )
         recovery = client.post("/api/v1/recovery")
         assert recovery.status_code == 200
         assert recovery.json()["scheduled_runs"] == 0

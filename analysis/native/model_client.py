@@ -15,6 +15,10 @@ from application.model_gateway import (
 )
 from application.tracing import TraceEvent, TraceExporter
 from infrastructure.db.model_call_repository import SqliteModelCallRepository
+from infrastructure.db.prompt_artifact_repository import SqlitePromptArtifactRepository
+
+SPECIALIST_PROMPT_TEMPLATE = "native-specialist-system"
+SPECIALIST_PROMPT_VERSION = 2
 
 
 class GatewaySpecialistClient:
@@ -24,16 +28,19 @@ class GatewaySpecialistClient:
         gateway: ModelGateway,
         model: str,
         calls: SqliteModelCallRepository,
+        prompts: SqlitePromptArtifactRepository,
         traces: TraceExporter,
         max_output_tokens: int = 8_000,
     ) -> None:
         self.gateway = gateway
         self.model = model
         self.calls = calls
+        self.prompts = prompts
         self.traces = traces
         self.max_output_tokens = max_output_tokens
 
     async def analyze(self, request: SpecialistRequest) -> SpecialistOutput:
+        system_prompt = _specialist_system_prompt(request)
         user_payload = {
             "role": request.role.model_dump(mode="json"),
             "files": [
@@ -59,6 +66,12 @@ class GatewaySpecialistClient:
         model_call_id = hashlib.sha256(
             f"{request.task_id}\0{request_hash}".encode()
         ).hexdigest()
+        prompt_artifact_id = hashlib.sha256(
+            (
+                f"{request.task_id}\0{SPECIALIST_PROMPT_TEMPLATE}\0"
+                f"{SPECIALIST_PROMPT_VERSION}\0{request_hash}"
+            ).encode()
+        ).hexdigest()
         correlation = {
             "run_id": request.run_id,
             "wave_id": request.wave_id,
@@ -66,6 +79,17 @@ class GatewaySpecialistClient:
             "model_call_id": model_call_id,
         }
         provider_hint = type(getattr(self.gateway, "gateway", self.gateway)).__name__
+        self.prompts.record(
+            prompt_artifact_id=prompt_artifact_id,
+            run_id=request.run_id,
+            wave_id=request.wave_id,
+            role_id=request.role.role_id,
+            task_id=request.task_id,
+            prompt_template=SPECIALIST_PROMPT_TEMPLATE,
+            prompt_version=SPECIALIST_PROMPT_VERSION,
+            prompt_text=system_prompt,
+            request_hash=request_hash,
+        )
         self.calls.start(
             model_call_id=model_call_id,
             run_id=request.run_id,
@@ -93,12 +117,7 @@ class GatewaySpecialistClient:
                     wave_id=request.wave_id,
                     task_id=request.task_id,
                     model=self.model,
-                    system_prompt=(
-                        "You are a read-only repository specialist. Return only "
-                        "JSON matching the supplied schema. Every finding must cite "
-                        "one or more exact assigned-file line spans. Do not claim "
-                        "runtime behavior that the supplied source cannot prove."
-                    ),
+                    system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     response_schema=SpecialistOutput.model_json_schema(),
                     max_output_tokens=min(
@@ -171,3 +190,28 @@ class GatewaySpecialistClient:
             )
         )
         return output
+
+
+def _specialist_system_prompt(request: SpecialistRequest) -> str:
+    """Render the exact provider system prompt without source bodies or credentials."""
+
+    role = request.role
+    prompt_contract = {
+        "allowed_tools": list(role.allowed_tools),
+        "completion_criteria": list(role.completion_criteria),
+        "coverage_targets": list(role.coverage_targets),
+        "mission": role.mission,
+        "name": role.name,
+        "rationale": role.rationale,
+        "required_capabilities": list(role.required_capabilities),
+        "role_id": role.role_id,
+    }
+    return (
+        "You are a read-only repository specialist. Return only JSON matching "
+        "the supplied schema. Every finding must cite one or more exact "
+        "assigned-file line spans. Do not claim runtime behavior that the "
+        "supplied source cannot prove.\n\nSpecialist contract:\n"
+        + json.dumps(prompt_contract, indent=2, sort_keys=True)
+        + "\n\nAssigned source files are supplied separately and are intentionally "
+        "excluded from this versioned prompt artifact."
+    )

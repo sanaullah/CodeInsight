@@ -716,6 +716,17 @@ class SqliteAnalysisRepository:
                 """,
                 (run_id,),
             ).fetchall()
+            prompt_artifacts = connection.execute(
+                """
+                SELECT prompt_artifact_id, wave_id, role_id, task_id,
+                       prompt_template, prompt_version, prompt_text, request_hash,
+                       redaction_json, retention_policy, retention_days, created_at
+                FROM specialist_prompt_artifacts
+                WHERE run_id = ? AND source_content_included = 0
+                ORDER BY created_at, prompt_artifact_id
+                """,
+                (run_id,),
+            ).fetchall()
         role_records = [
             {"wave_id": str(row["wave_id"]), **json.loads(row["contract_json"])}
             for row in roles
@@ -756,6 +767,17 @@ class SqliteAnalysisRepository:
             }
             for row in calls
         ]
+        safe_prompt_artifacts = [
+            {
+                **{
+                    key: row[key]
+                    for key in row.keys()
+                    if key != "redaction_json"
+                },
+                "redaction": json.loads(row["redaction_json"]),
+            }
+            for row in prompt_artifacts
+        ]
         usage = {
             "input_tokens": sum(
                 int(item["usage"].get("input_tokens", 0)) for item in model_calls
@@ -788,5 +810,6 @@ class SqliteAnalysisRepository:
             "findings": [json.loads(row["contract_json"]) for row in findings],
             "coverage": [json.loads(row["contract_json"]) for row in coverage],
             "model_calls": model_calls,
+            "prompt_artifacts": safe_prompt_artifacts,
             "usage": usage,
         }

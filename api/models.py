@@ -204,6 +204,7 @@ class AnalysisIntelligence(BaseModel):
     findings: list[dict[str, Any]] = Field(default_factory=list)
     coverage: list[dict[str, Any]] = Field(default_factory=list)
     model_calls: list[dict[str, Any]] = Field(default_factory=list)
+    prompt_artifacts: list[dict[str, Any]] = Field(default_factory=list)
     usage: dict[str, int | float] = Field(default_factory=dict)
 
 
