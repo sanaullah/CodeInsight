@@ -372,3 +372,39 @@ export interface HistoryTrends {
     average_duration_seconds: number | null;
   }>;
 }
+
+export interface LocalSettings {
+  default_mode: AnalysisMode;
+  default_max_agents: number;
+  default_max_waves: number;
+  default_max_tasks: number;
+  default_max_total_tokens: number;
+  default_max_cost_usd: number;
+  default_max_elapsed_seconds: number;
+  evidence_excerpt_enabled: boolean;
+  retention_days: number;
+}
+
+export interface SettingsResponse {
+  settings: LocalSettings;
+  version: number;
+  updated_at: string | null;
+}
+
+export type PresetRequest = Omit<AnalysisRequest, "project_path">;
+
+export interface ReviewPreset {
+  preset_id: string;
+  name: string;
+  request: PresetRequest;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProviderTestResponse {
+  configured: boolean;
+  reachable: boolean;
+  status: string;
+  latency_ms: number | null;
+}

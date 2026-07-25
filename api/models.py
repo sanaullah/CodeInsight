@@ -223,3 +223,77 @@ class FindingPage(BaseModel):
     items: list[dict[str, Any]]
     next_cursor: str | None = None
     counts_by_severity: dict[str, int] = Field(default_factory=dict)
+
+
+class LocalSettings(BaseModel):
+    """Durable non-secret defaults for local analysis runs."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    default_mode: AnalysisMode = AnalysisMode.DEEP
+    default_max_agents: int = Field(default=4, ge=1, le=12)
+    default_max_waves: int = Field(default=2, ge=1, le=10)
+    default_max_tasks: int = Field(default=100, ge=1, le=500)
+    default_max_total_tokens: int = Field(default=1_000_000, ge=1)
+    default_max_cost_usd: float = Field(default=25, ge=0)
+    default_max_elapsed_seconds: int = Field(default=3_600, ge=1)
+    evidence_excerpt_enabled: bool = True
+    retention_days: int = Field(default=90, ge=1, le=3650)
+
+
+class SettingsResponse(BaseModel):
+    settings: LocalSettings
+    version: int = Field(ge=0)
+    updated_at: datetime | None = None
+
+
+class SettingsUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    settings: LocalSettings
+    expected_version: int = Field(ge=0)
+
+
+class PresetRequest(BaseModel):
+    """A reusable review shape that intentionally excludes repository paths and secrets."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    goal: str | None = Field(default=None, max_length=4000)
+    model_name: str | None = Field(default=None, max_length=300)
+    max_agents: int = Field(default=4, ge=1, le=12)
+    file_extensions: list[str] | None = Field(default=None, max_length=50)
+    selected_directories: list[str] | None = Field(default=None, max_length=100)
+    mode: AnalysisMode = AnalysisMode.DEEP
+    max_waves: int = Field(default=2, ge=1, le=10)
+    max_tasks: int = Field(default=100, ge=1, le=500)
+    max_total_tokens: int = Field(default=1_000_000, ge=1)
+    max_cost_usd: float = Field(default=25, ge=0)
+    max_elapsed_seconds: int = Field(default=3_600, ge=1)
+
+
+class PresetCreate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    name: str = Field(min_length=1, max_length=100)
+    request: PresetRequest
+
+
+class PresetUpdate(PresetCreate):
+    expected_version: int = Field(ge=1)
+
+
+class PresetResponse(BaseModel):
+    preset_id: str
+    name: str
+    request: PresetRequest
+    version: int = Field(ge=1)
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProviderTestResponse(BaseModel):
+    configured: bool
+    reachable: bool
+    status: str
+    latency_ms: int | None = Field(default=None, ge=0)

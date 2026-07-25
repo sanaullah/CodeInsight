@@ -6,6 +6,9 @@ import asyncio
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.error import HTTPError, URLError
+from urllib.request import Request as UrlRequest
+from urllib.request import urlopen
 from uuid import uuid4
 
 from analysis.native.coordinator import NativeAnalysisCoordinator
@@ -35,6 +38,7 @@ from infrastructure.db.finding_repository import SqliteFindingRepository
 from infrastructure.db.history_repository import SqliteHistoryRepository
 from infrastructure.db.model_call_repository import SqliteModelCallRepository
 from infrastructure.db.run_ledger import SqliteRunLedger
+from infrastructure.db.settings_repository import SqliteSettingsRepository
 from infrastructure.db.snapshot_repository import SqliteSnapshotRepository
 from infrastructure.db.task_repository import SqliteTaskRepository
 from infrastructure.llm.gateway import OpenAICompatibleGateway
@@ -371,6 +375,85 @@ class AnalysisService:
     async def query_history(self, **filters: Any) -> dict[str, Any]:
         await self.start()
         return await asyncio.to_thread(SqliteHistoryRepository(self._get_ledger()).query, **filters)
+
+    async def get_settings(self) -> dict[str, Any]:
+        await self.start()
+        return await asyncio.to_thread(SqliteSettingsRepository(self._get_ledger()).get)
+
+    async def update_settings(
+        self, settings: dict[str, Any], expected_version: int
+    ) -> dict[str, Any]:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteSettingsRepository(self._get_ledger()).update,
+            settings,
+            expected_version,
+        )
+
+    async def list_presets(self) -> list[dict[str, Any]]:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteSettingsRepository(self._get_ledger()).list_presets
+        )
+
+    async def save_preset(self, **values: Any) -> dict[str, Any]:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteSettingsRepository(self._get_ledger()).save_preset,
+            **values,
+        )
+
+    async def delete_preset(self, preset_id: str, expected_version: int) -> bool:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteSettingsRepository(self._get_ledger()).delete_preset,
+            preset_id,
+            expected_version,
+        )
+
+    async def test_provider(self) -> dict[str, Any]:
+        """Probe the configured OpenAI-compatible endpoint without exposing secrets."""
+
+        if self._configured_gateway is not None:
+            return {
+                "configured": True,
+                "reachable": True,
+                "status": "Injected provider is available in this process.",
+                "latency_ms": None,
+            }
+        if not self.settings.model_base_url:
+            return {
+                "configured": False,
+                "reachable": False,
+                "status": "Provider endpoint is not configured.",
+                "latency_ms": None,
+            }
+        return await asyncio.to_thread(self._probe_provider)
+
+    def _probe_provider(self) -> dict[str, Any]:
+        from time import monotonic
+
+        endpoint = f"{self.settings.model_base_url.rstrip('/')}/models"
+        headers = {"Accept": "application/json"}
+        if self.settings.model_api_key:
+            headers["Authorization"] = f"Bearer {self.settings.model_api_key}"
+        started = monotonic()
+        try:
+            with urlopen(UrlRequest(endpoint, headers=headers), timeout=3) as response:
+                reachable = 200 <= response.status < 500
+                status_message = f"Provider responded with HTTP {response.status}."
+        except HTTPError as exc:
+            reachable = exc.code < 500
+            status_message = f"Provider responded with HTTP {exc.code}."
+        except (URLError, TimeoutError, OSError):
+            reachable = False
+            status_message = "Provider could not be reached within the bounded probe."
+        return {
+            "configured": True,
+            "reachable": reachable,
+            "status": status_message,
+            "latency_ms": round((monotonic() - started) * 1000),
+        }
 
     async def compare_runs(self, baseline_run_id: str, target_run_id: str) -> dict[str, Any] | None:
         await self.start()

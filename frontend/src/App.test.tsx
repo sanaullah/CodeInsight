@@ -36,6 +36,32 @@ beforeEach(() => {
     buckets: [],
   });
   vi.spyOn(apiClient, "compareRuns").mockRejectedValue(new Error("Runs not selected"));
+  vi.spyOn(apiClient, "settings").mockResolvedValue({
+    settings: {
+      default_mode: "deep",
+      default_max_agents: 4,
+      default_max_waves: 2,
+      default_max_tasks: 100,
+      default_max_total_tokens: 1_000_000,
+      default_max_cost_usd: 25,
+      default_max_elapsed_seconds: 3_600,
+      evidence_excerpt_enabled: true,
+      retention_days: 90,
+    },
+    version: 0,
+    updated_at: null,
+  });
+  vi.spyOn(apiClient, "presets").mockResolvedValue([]);
+  vi.spyOn(apiClient, "updateSettings").mockRejectedValue(new Error("No settings update"));
+  vi.spyOn(apiClient, "testProvider").mockResolvedValue({
+    configured: false,
+    reachable: false,
+    status: "Provider endpoint is not configured.",
+    latency_ms: null,
+  });
+  vi.spyOn(apiClient, "createPreset").mockRejectedValue(new Error("No preset create"));
+  vi.spyOn(apiClient, "updatePreset").mockRejectedValue(new Error("No preset update"));
+  vi.spyOn(apiClient, "deletePreset").mockRejectedValue(new Error("No preset delete"));
 });
 
 describe("application shell", () => {
@@ -80,6 +106,40 @@ describe("application shell", () => {
     expect(window.location.pathname).toBe("/reviews/run-new");
   });
 
+  it("applies a path-free durable preset to a new review", async () => {
+    window.history.replaceState({}, "", "/new-review");
+    const user = userEvent.setup();
+    vi.mocked(apiClient.presets).mockResolvedValue([
+      {
+        preset_id: "preset-security",
+        name: "Security triage",
+        request: {
+          goal: "Inspect authorization",
+          model_name: null,
+          file_extensions: [".py"],
+          selected_directories: ["src"],
+          mode: "security",
+          max_agents: 6,
+          max_waves: 3,
+          max_tasks: 80,
+          max_total_tokens: 200_000,
+          max_cost_usd: 10,
+          max_elapsed_seconds: 900,
+        },
+        version: 1,
+        created_at: "2026-07-25T12:00:00Z",
+        updated_at: "2026-07-25T12:00:00Z",
+      },
+    ]);
+    render(<App />);
+
+    await user.selectOptions(await screen.findByLabelText("Review preset"), "preset-security");
+    expect(screen.getByLabelText("Review goal")).toHaveValue("Inspect authorization");
+    expect(screen.getByLabelText("Maximum specialists")).toHaveValue("6");
+    expect(screen.getByLabelText("File extensions")).toHaveValue(".py");
+    expect(screen.getByLabelText(/Security/)).toBeChecked();
+  });
+
   it("shows durable command-center intelligence and cancellation", async () => {
     window.history.replaceState({}, "", "/reviews/run-fixture-1");
     const user = userEvent.setup();
@@ -121,14 +181,74 @@ describe("application shell", () => {
     expect(menu).toHaveAttribute("aria-expanded", "false");
   });
 
-  it.each([
-    ["/settings", "Settings"],
-    ["/missing", "Page not found"],
-  ])("establishes the %s route without claiming the future feature is ready", async (path, heading) => {
-    window.history.replaceState({}, "", path);
+  it("renders a truthful missing route", async () => {
+    window.history.replaceState({}, "", "/missing");
     render(<App />);
-    expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Page not found" })).toBeInTheDocument();
     expect(screen.getByText(/not yet implemented/i)).toBeInTheDocument();
+  });
+
+  it("saves durable settings, tests the provider, and manages a preset", async () => {
+    window.history.replaceState({}, "", "/settings");
+    const user = userEvent.setup();
+    const updatedSettings = {
+      settings: {
+        default_mode: "security" as const,
+        default_max_agents: 4,
+        default_max_waves: 2,
+        default_max_tasks: 100,
+        default_max_total_tokens: 1_000_000,
+        default_max_cost_usd: 25,
+        default_max_elapsed_seconds: 3_600,
+        evidence_excerpt_enabled: true,
+        retention_days: 90,
+      },
+      version: 1,
+      updated_at: "2026-07-25T12:00:00Z",
+    };
+    vi.mocked(apiClient.updateSettings).mockResolvedValue(updatedSettings);
+    const createdPreset = {
+      preset_id: "preset-1",
+      name: "Security defaults",
+      request: {
+        goal: null,
+        model_name: null,
+        file_extensions: null,
+        selected_directories: null,
+        mode: "security" as const,
+        max_agents: 4,
+        max_waves: 2,
+        max_tasks: 100,
+        max_total_tokens: 1_000_000,
+        max_cost_usd: 25,
+        max_elapsed_seconds: 3_600,
+      },
+      version: 1,
+      created_at: "2026-07-25T12:00:00Z",
+      updated_at: "2026-07-25T12:00:00Z",
+    };
+    vi.mocked(apiClient.createPreset).mockResolvedValue(createdPreset);
+    vi.mocked(apiClient.deletePreset).mockResolvedValue();
+    render(<App />);
+
+    expect(await screen.findByText("Analysis guardrails")).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Default mode"), "security");
+    expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save defaults" }));
+    await waitFor(() =>
+      expect(apiClient.updateSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ default_mode: "security" }),
+        0,
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Test provider" }));
+    expect(await screen.findByText("Provider endpoint is not configured.")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Preset name"), "Security defaults");
+    await user.click(screen.getByRole("button", { name: "Save current defaults" }));
+    expect(await screen.findByText("Security defaults")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Apply" }));
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(apiClient.deletePreset).toHaveBeenCalledWith("preset-1", 1));
   });
 
   it("filters durable history and compares two runs", async () => {

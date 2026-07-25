@@ -89,4 +89,71 @@ describe("apiClient", () => {
 
     await expect(apiClient.health()).rejects.toThrow("Request failed (503)");
   });
+
+  it("maps durable settings, provider checks, and preset lifecycle contracts", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => response({}));
+    const settings = {
+      default_mode: "deep" as const,
+      default_max_agents: 4,
+      default_max_waves: 2,
+      default_max_tasks: 100,
+      default_max_total_tokens: 1_000_000,
+      default_max_cost_usd: 25,
+      default_max_elapsed_seconds: 3_600,
+      evidence_excerpt_enabled: true,
+      retention_days: 90,
+    };
+    const preset = {
+      preset_id: "preset/one",
+      name: "Deep",
+      request: {
+        goal: null,
+        model_name: null,
+        file_extensions: null,
+        selected_directories: null,
+        mode: "deep" as const,
+        max_agents: 4,
+        max_waves: 2,
+        max_tasks: 100,
+        max_total_tokens: 1_000_000,
+        max_cost_usd: 25,
+        max_elapsed_seconds: 3_600,
+      },
+      version: 2,
+      created_at: "now",
+      updated_at: "now",
+    };
+
+    await apiClient.settings();
+    await apiClient.updateSettings(settings, 3);
+    await apiClient.testProvider();
+    await apiClient.presets();
+    await apiClient.createPreset("Deep", preset.request);
+    await apiClient.updatePreset(preset);
+    await apiClient.deletePreset("preset/one", 2);
+
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      "/api/v1/settings",
+      "/api/v1/settings",
+      "/api/v1/settings/provider-test",
+      "/api/v1/presets",
+      "/api/v1/presets",
+      "/api/v1/presets/preset%2Fone",
+      "/api/v1/presets/preset%2Fone?expected_version=2",
+    ]);
+    expect(fetchMock.mock.calls[1][1]).toEqual(
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ settings, expected_version: 3 }),
+      }),
+    );
+  });
+
+  it("reports preset deletion conflicts", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(response({}, 409));
+    await expect(apiClient.deletePreset("stale", 1)).rejects.toMatchObject({
+      message: "Unable to delete preset (409)",
+      status: 409,
+    });
+  });
 });

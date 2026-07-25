@@ -8,6 +8,7 @@ import { HistoryPage } from "./pages/HistoryPage";
 import { NewReviewPage } from "./pages/NewReviewPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { SettingsPage } from "./pages/SettingsPage";
 import { usePathname } from "./router";
 
 export function App() {
@@ -29,12 +30,7 @@ export function App() {
   } else if (pathname === "/history") {
     page = <HistoryPage />;
   } else if (pathname === "/settings") {
-    page = (
-      <PlaceholderPage
-        description="Local defaults and presets will be added only after their SQLite-backed settings contract is defined."
-        title="Settings"
-      />
-    );
+    page = <SettingsPage operational={operational} />;
   } else {
     page = (
       <PlaceholderPage

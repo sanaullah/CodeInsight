@@ -12,8 +12,13 @@ import type {
   HealthResponse,
   HistoryPage,
   HistoryTrends,
+  LocalSettings,
+  PresetRequest,
+  ProviderTestResponse,
   RecoveryResponse,
+  ReviewPreset,
   RunComparison,
+  SettingsResponse,
   SnapshotSummary,
 } from "./contracts";
 
@@ -107,4 +112,34 @@ export const apiClient = {
     ),
   historyTrends: (days = 30, signal?: AbortSignal) =>
     request<HistoryTrends>(`/api/v1/history/trends?days=${days}`, { signal }),
+  settings: (signal?: AbortSignal) => request<SettingsResponse>("/api/v1/settings", { signal }),
+  updateSettings: (settings: LocalSettings, expectedVersion: number) =>
+    request<SettingsResponse>("/api/v1/settings", {
+      method: "PUT",
+      body: JSON.stringify({ settings, expected_version: expectedVersion }),
+    }),
+  testProvider: () =>
+    request<ProviderTestResponse>("/api/v1/settings/provider-test", { method: "POST" }),
+  presets: (signal?: AbortSignal) => request<ReviewPreset[]>("/api/v1/presets", { signal }),
+  createPreset: (name: string, presetRequest: PresetRequest) =>
+    request<ReviewPreset>("/api/v1/presets", {
+      method: "POST",
+      body: JSON.stringify({ name, request: presetRequest }),
+    }),
+  updatePreset: (preset: ReviewPreset) =>
+    request<ReviewPreset>(`/api/v1/presets/${encodeURIComponent(preset.preset_id)}`, {
+      method: "PUT",
+      body: JSON.stringify({
+        name: preset.name,
+        request: preset.request,
+        expected_version: preset.version,
+      }),
+    }),
+  deletePreset: (presetId: string, expectedVersion: number) =>
+    fetch(`/api/v1/presets/${encodeURIComponent(presetId)}?expected_version=${expectedVersion}`, {
+      method: "DELETE",
+    }).then((response) => {
+      if (!response.ok)
+        throw new ApiError(`Unable to delete preset (${response.status})`, response.status);
+    }),
 };

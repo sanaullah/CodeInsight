@@ -1,7 +1,7 @@
 import type { FormEvent } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiClient } from "../api/client";
-import type { AnalysisMode, AnalysisRequest } from "../api/contracts";
+import type { AnalysisMode, AnalysisRequest, LocalSettings, ReviewPreset } from "../api/contracts";
 import { Icon } from "../components/Icon";
 import { ErrorNotice, PageHeader, Panel } from "../components/primitives";
 import { formatLabel } from "../format";
@@ -36,6 +36,21 @@ export function NewReviewPage({ operational }: { operational: OperationalState }
   const [directories, setDirectories] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [presets, setPresets] = useState<ReviewPreset[]>([]);
+  const [selectedPreset, setSelectedPreset] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    Promise.all([apiClient.settings(controller.signal), apiClient.presets(controller.signal)])
+      .then(([settings, savedPresets]) => {
+        setForm((current) => ({ ...current, ...requestDefaults(settings.settings) }));
+        setPresets(savedPresets);
+      })
+      .catch(() => {
+        // Built-in safe defaults remain available when optional preferences cannot load.
+      });
+    return () => controller.abort();
+  }, []);
 
   const availableModes = useMemo(
     () => new Set(operational.capabilities?.analysis_modes ?? modes.map((mode) => mode.value)),
@@ -128,6 +143,30 @@ export function NewReviewPage({ operational }: { operational: OperationalState }
               </div>
             </fieldset>
             <div className="field-grid">
+              <div className="form-section">
+                <label htmlFor="review-preset">Review preset</label>
+                <select
+                  id="review-preset"
+                  onChange={(event) => {
+                    const preset = presets.find((item) => item.preset_id === event.target.value);
+                    setSelectedPreset(event.target.value);
+                    if (preset) {
+                      setForm((current) => ({ ...current, ...preset.request }));
+                      setExtensions((preset.request.file_extensions ?? []).join(", "));
+                      setDirectories((preset.request.selected_directories ?? []).join(", "));
+                    }
+                  }}
+                  value={selectedPreset}
+                >
+                  <option value="">Use local defaults</option>
+                  {presets.map((preset) => (
+                    <option key={preset.preset_id} value={preset.preset_id}>
+                      {preset.name}
+                    </option>
+                  ))}
+                </select>
+                <small>Presets never contain a repository path or provider credential.</small>
+              </div>
               <div className="form-section">
                 <label htmlFor="model-name">Model</label>
                 <input
@@ -285,6 +324,18 @@ export function NewReviewPage({ operational }: { operational: OperationalState }
       </div>
     </div>
   );
+}
+
+function requestDefaults(settings: LocalSettings): Partial<AnalysisRequest> {
+  return {
+    mode: settings.default_mode,
+    max_agents: settings.default_max_agents,
+    max_waves: settings.default_max_waves,
+    max_tasks: settings.default_max_tasks,
+    max_total_tokens: settings.default_max_total_tokens,
+    max_cost_usd: settings.default_max_cost_usd,
+    max_elapsed_seconds: settings.default_max_elapsed_seconds,
+  };
 }
 
 function NumberField({

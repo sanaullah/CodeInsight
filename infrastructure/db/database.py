@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DEFAULT_BUSY_TIMEOUT_MS = 5_000
 
 _MIGRATION_1 = (
@@ -361,9 +361,32 @@ _MIGRATION_2 = (
     "ON finding_review_events(finding_id, review_event_id)",
 )
 
+_MIGRATION_3 = (
+    """
+    CREATE TABLE application_settings (
+        settings_key TEXT PRIMARY KEY,
+        settings_json TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE review_presets (
+        preset_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        request_json TEXT NOT NULL,
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_review_presets_name ON review_presets(name)",
+)
+
 MIGRATIONS: dict[int, tuple[str, tuple[str, ...]]] = {
     1: ("initial durable application ledger", _MIGRATION_1),
     2: ("durable finding review lifecycle", _MIGRATION_2),
+    3: ("durable local settings and review presets", _MIGRATION_3),
 }
 
 

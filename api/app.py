@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -20,8 +21,14 @@ from api.models import (
     FindingReviewUpdate,
     HealthResponse,
     LanguageCapability,
+    PresetCreate,
+    PresetResponse,
+    PresetUpdate,
+    ProviderTestResponse,
     RecoveryResponse,
     RuntimeIdentity,
+    SettingsResponse,
+    SettingsUpdate,
 )
 from application.analysis_service import AnalysisService
 from infrastructure.db.database import SCHEMA_VERSION
@@ -341,6 +348,88 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
         request: Request, days: int = Query(default=30, ge=1, le=3650)
     ) -> dict:
         return await request.app.state.analysis_service.history_trends(days)
+
+    @app.get("/api/v1/settings", response_model=SettingsResponse)
+    async def get_settings(request: Request) -> SettingsResponse:
+        values = await request.app.state.analysis_service.get_settings()
+        return SettingsResponse.model_validate(values)
+
+    @app.put("/api/v1/settings", response_model=SettingsResponse)
+    async def update_settings(
+        payload: SettingsUpdate, request: Request
+    ) -> SettingsResponse:
+        try:
+            values = await request.app.state.analysis_service.update_settings(
+                payload.settings.model_dump(mode="json"),
+                payload.expected_version,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return SettingsResponse.model_validate(values)
+
+    @app.post(
+        "/api/v1/settings/provider-test",
+        response_model=ProviderTestResponse,
+    )
+    async def test_provider(request: Request) -> ProviderTestResponse:
+        values = await request.app.state.analysis_service.test_provider()
+        return ProviderTestResponse.model_validate(values)
+
+    @app.get("/api/v1/presets", response_model=list[PresetResponse])
+    async def list_presets(request: Request) -> list[PresetResponse]:
+        values = await request.app.state.analysis_service.list_presets()
+        return [PresetResponse.model_validate(item) for item in values]
+
+    @app.post(
+        "/api/v1/presets",
+        response_model=PresetResponse,
+        status_code=status.HTTP_201_CREATED,
+    )
+    async def create_preset(
+        payload: PresetCreate, request: Request
+    ) -> PresetResponse:
+        try:
+            value = await request.app.state.analysis_service.save_preset(
+                name=payload.name,
+                request=payload.request.model_dump(mode="json"),
+            )
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="Preset name already exists") from exc
+        return PresetResponse.model_validate(value)
+
+    @app.put("/api/v1/presets/{preset_id}", response_model=PresetResponse)
+    async def update_preset(
+        preset_id: str, payload: PresetUpdate, request: Request
+    ) -> PresetResponse:
+        try:
+            value = await request.app.state.analysis_service.save_preset(
+                preset_id=preset_id,
+                name=payload.name,
+                request=payload.request.model_dump(mode="json"),
+                expected_version=payload.expected_version,
+            )
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail="Preset not found") from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        except sqlite3.IntegrityError as exc:
+            raise HTTPException(status_code=409, detail="Preset name already exists") from exc
+        return PresetResponse.model_validate(value)
+
+    @app.delete("/api/v1/presets/{preset_id}", status_code=status.HTTP_204_NO_CONTENT)
+    async def delete_preset(
+        preset_id: str,
+        request: Request,
+        expected_version: int = Query(ge=1),
+    ) -> None:
+        try:
+            deleted = await request.app.state.analysis_service.delete_preset(
+                preset_id, expected_version
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if not deleted:
+            raise HTTPException(status_code=404, detail="Preset not found")
 
     @app.post("/api/v1/recovery", response_model=RecoveryResponse)
     async def recover_analysis_work(request: Request) -> RecoveryResponse:
