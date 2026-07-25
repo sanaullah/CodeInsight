@@ -202,3 +202,58 @@ export interface RecoveryResponse {
   recovered_tasks: number;
   scheduled_runs: number;
 }
+
+export type FindingReviewState =
+  | "new"
+  | "validated"
+  | "acknowledged"
+  | "reviewed"
+  | "dismissed"
+  | "reopened"
+  | "resolved";
+
+export interface FindingSummary extends CanonicalFinding {
+  run_id: string;
+  review_state: FindingReviewState;
+  review_note: string | null;
+  review_version: number;
+  reviewed_at: string | null;
+}
+
+export interface EvidenceDetail {
+  evidence_id: string;
+  relative_path: string;
+  content_hash: string;
+  start_line: number;
+  end_line: number;
+  evidence_kind: string;
+  provenance: Record<string, unknown>;
+  excerpt: string | null;
+  integrity: "valid" | "invalid" | "unavailable";
+  redacted: boolean;
+  truncated?: boolean;
+}
+
+export interface FindingDetail extends FindingSummary {
+  candidates: Array<{
+    relationship: string;
+    candidate: FindingCandidate;
+    role: RoleRecord | null;
+    verdict: CandidateVerdict | null;
+  }>;
+  evidence: EvidenceDetail[];
+  review_history: Array<{
+    review_event_id: number;
+    previous_state: FindingReviewState | null;
+    review_state: FindingReviewState;
+    note: string | null;
+    actor: string;
+    created_at: string;
+  }>;
+}
+
+export interface FindingPage {
+  items: FindingSummary[];
+  next_cursor: string | null;
+  counts_by_severity: Partial<Record<CanonicalFinding["severity"], number>>;
+}

@@ -4,6 +4,9 @@ import type {
   AnalysisRequest,
   AnalysisRun,
   CapabilitiesResponse,
+  FindingDetail,
+  FindingPage,
+  FindingReviewState,
   HealthResponse,
   RecoveryResponse,
 } from "./contracts";
@@ -64,5 +67,17 @@ export const apiClient = {
   recover: () =>
     request<RecoveryResponse>("/api/v1/recovery", {
       method: "POST",
+    }),
+  findings: (params: URLSearchParams, signal?: AbortSignal) =>
+    request<FindingPage>(`/api/v1/findings?${params.toString()}`, { signal }),
+  finding: (findingId: string, signal?: AbortSignal) =>
+    request<FindingDetail>(`/api/v1/findings/${encodeURIComponent(findingId)}`, { signal }),
+  updateFinding: (
+    findingId: string,
+    payload: { review_state: FindingReviewState; note?: string | null; expected_version: number },
+  ) =>
+    request<FindingDetail>(`/api/v1/findings/${encodeURIComponent(findingId)}/review`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
     }),
 };

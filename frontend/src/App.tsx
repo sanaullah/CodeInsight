@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AppShell } from "./components/AppShell";
 import { useOperationalState } from "./hooks/useOperationalState";
 import { CommandCenterPage } from "./pages/CommandCenterPage";
+import { FindingsPage } from "./pages/FindingsPage";
 import { NewReviewPage } from "./pages/NewReviewPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
@@ -27,12 +28,7 @@ export function App() {
       />
     );
   } else if (pathname === "/findings") {
-    page = (
-      <PlaceholderPage
-        description="Search, lifecycle state, evidence detail, and export require the next durable findings contract."
-        title="Findings"
-      />
-    );
+    page = <FindingsPage />;
   } else if (pathname === "/history") {
     page = (
       <PlaceholderPage

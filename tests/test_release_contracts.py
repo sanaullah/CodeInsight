@@ -14,6 +14,7 @@ from indexing.scanners.language_config import (
     get_language_metadata,
     get_supported_languages,
 )
+from infrastructure.db.database import SCHEMA_VERSION
 from infrastructure.scripts import init_database
 
 
@@ -107,4 +108,4 @@ def test_database_initializer_cli_uses_canonical_schema_source(
 
     assert init_database.main() == 0
     assert database_path.is_file()
-    assert "schema 1" in capsys.readouterr().out
+    assert f"schema {SCHEMA_VERSION}" in capsys.readouterr().out

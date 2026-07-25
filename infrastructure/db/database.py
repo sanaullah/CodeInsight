@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_BUSY_TIMEOUT_MS = 5_000
 
 _MIGRATION_1 = (
@@ -330,8 +330,40 @@ _MIGRATION_1 = (
     "CREATE INDEX idx_candidates_run_fingerprint ON finding_candidates(run_id, fingerprint)",
 )
 
+_MIGRATION_2 = (
+    """
+    CREATE TABLE finding_reviews (
+        finding_id TEXT PRIMARY KEY REFERENCES canonical_findings(finding_id)
+            ON DELETE CASCADE,
+        review_state TEXT NOT NULL CHECK (
+            review_state IN ('new', 'validated', 'acknowledged', 'reviewed',
+                             'dismissed', 'reopened', 'resolved')
+        ),
+        note TEXT,
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE finding_review_events (
+        review_event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        finding_id TEXT NOT NULL REFERENCES canonical_findings(finding_id)
+            ON DELETE CASCADE,
+        previous_state TEXT,
+        review_state TEXT NOT NULL,
+        note TEXT,
+        actor TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_finding_reviews_state ON finding_reviews(review_state, updated_at)",
+    "CREATE INDEX idx_finding_review_events_finding "
+    "ON finding_review_events(finding_id, review_event_id)",
+)
+
 MIGRATIONS: dict[int, tuple[str, tuple[str, ...]]] = {
     1: ("initial durable application ledger", _MIGRATION_1),
+    2: ("durable finding review lifecycle", _MIGRATION_2),
 }
 
 
@@ -339,9 +371,7 @@ def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
 
 
-def _apply_pragmas(
-    connection: sqlite3.Connection, *, busy_timeout_ms: int
-) -> None:
+def _apply_pragmas(connection: sqlite3.Connection, *, busy_timeout_ms: int) -> None:
     connection.execute("PRAGMA foreign_keys = ON")
     connection.execute(f"PRAGMA busy_timeout = {int(busy_timeout_ms)}")
     connection.execute("PRAGMA synchronous = NORMAL")
@@ -389,9 +419,7 @@ def initialize_database(
 ) -> int:
     """Create or upgrade the one application database in place."""
 
-    with database_connection(
-        database_path, busy_timeout_ms=busy_timeout_ms
-    ) as connection:
+    with database_connection(database_path, busy_timeout_ms=busy_timeout_ms) as connection:
         # journal_mode is persistent database state. Set it during the serialized
         # initialization path rather than repeating the disk-level negotiation on
         # every short-lived repository connection.
@@ -438,17 +466,14 @@ def initialize_database(
                     or applied["checksum"] != expected_checksum
                 ):
                     raise RuntimeError(
-                        f"database migration {version} does not match "
-                        "the canonical schema source"
+                        f"database migration {version} does not match the canonical schema source"
                     )
 
             for version in range(current_version + 1, SCHEMA_VERSION + 1):
                 description, statements = MIGRATIONS[version]
                 for statement in statements:
                     connection.execute(statement)
-                checksum = hashlib.sha256(
-                    "\n".join(statements).encode("utf-8")
-                ).hexdigest()
+                checksum = hashlib.sha256("\n".join(statements).encode("utf-8")).hexdigest()
                 connection.execute(
                     """
                     INSERT INTO schema_migrations(

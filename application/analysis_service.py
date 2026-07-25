@@ -30,6 +30,7 @@ from infrastructure.artifacts.store import FilesystemArtifactStore
 from infrastructure.db.analysis_repository import SqliteAnalysisRepository
 from infrastructure.db.artifact_repository import SqliteArtifactRepository
 from infrastructure.db.database import checkpoint_database
+from infrastructure.db.finding_repository import SqliteFindingRepository
 from infrastructure.db.model_call_repository import SqliteModelCallRepository
 from infrastructure.db.run_ledger import SqliteRunLedger
 from infrastructure.db.snapshot_repository import SqliteSnapshotRepository
@@ -323,6 +324,35 @@ class AnalysisService:
         await self.start()
         record = SqliteAnalysisRepository(self._get_ledger()).run_intelligence(run_id)
         return AnalysisIntelligence.model_validate(record) if record else None
+
+    async def query_findings(self, **filters: Any) -> dict[str, Any]:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteFindingRepository(self._get_ledger()).query, **filters
+        )
+
+    async def finding_detail(self, finding_id: str) -> dict[str, Any] | None:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteFindingRepository(self._get_ledger()).detail, finding_id
+        )
+
+    async def update_finding_review(
+        self,
+        finding_id: str,
+        *,
+        review_state: str,
+        note: str | None,
+        expected_version: int | None,
+    ) -> dict[str, Any] | None:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteFindingRepository(self._get_ledger()).set_review_state,
+            finding_id,
+            review_state=review_state,
+            note=note,
+            expected_version=expected_version,
+        )
 
     async def list(self, limit: int = 20) -> list[AnalysisRun]:
         await self.start()

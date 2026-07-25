@@ -19,6 +19,13 @@ beforeEach(() => {
   vi.spyOn(apiClient, "listRuns").mockResolvedValue([]);
   vi.spyOn(apiClient, "getRun").mockResolvedValue(runningRunFixture);
   vi.spyOn(apiClient, "getIntelligence").mockResolvedValue(runningIntelligenceFixture);
+  vi.spyOn(apiClient, "findings").mockResolvedValue({
+    items: [],
+    next_cursor: null,
+    counts_by_severity: {},
+  });
+  vi.spyOn(apiClient, "finding").mockRejectedValue(new Error("Finding not selected"));
+  vi.spyOn(apiClient, "updateFinding").mockRejectedValue(new Error("Finding not selected"));
 });
 
 describe("application shell", () => {
@@ -106,7 +113,6 @@ describe("application shell", () => {
 
   it.each([
     ["/architecture", "Architecture explorer"],
-    ["/findings", "Findings"],
     ["/history", "Review history"],
     ["/settings", "Settings"],
     ["/missing", "Page not found"],
@@ -115,6 +121,108 @@ describe("application shell", () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
     expect(screen.getByText(/not yet implemented/i)).toBeInTheDocument();
+  });
+
+  it("filters findings through the typed API and records durable review state", async () => {
+    window.history.replaceState({}, "", "/findings");
+    const user = userEvent.setup();
+    const finding = {
+      finding_id: "finding-1",
+      fingerprint: "authorization",
+      title: "Authorization check is bypassed",
+      claim: "The handler reaches a protected path without enforcing policy.",
+      severity: "high" as const,
+      confidence: 0.94,
+      candidate_ids: ["candidate-1"],
+      supporting_evidence_ids: ["evidence-1"],
+      conflicting_candidate_ids: [],
+      recommendation: "Enforce policy before dispatch.",
+      run_id: "run-fixture-1",
+      review_state: "new" as const,
+      review_note: null,
+      review_version: 0,
+      reviewed_at: null,
+    };
+    const findings = vi.mocked(apiClient.findings).mockResolvedValue({
+      items: [finding],
+      next_cursor: null,
+      counts_by_severity: { high: 1 },
+    });
+    vi.mocked(apiClient.finding).mockResolvedValue({
+      ...finding,
+      candidates: [
+        {
+          relationship: "supporting",
+          candidate: {
+            candidate_id: "candidate-1",
+            title: finding.title,
+            claim: finding.claim,
+            category: "security",
+            affected_path: "src/auth.py",
+            impact: "Unauthorized access",
+            proposed_severity: "high",
+            proposed_confidence: 0.94,
+            recommendation: finding.recommendation,
+          },
+          role: {
+            role_id: "role-1",
+            wave_id: "wave-1",
+            name: "Security specialist",
+            mission: "Review authorization",
+            rationale: "Security mode",
+            coverage_targets: ["src/auth.py"],
+            required_capabilities: [],
+            model_policy: "balanced",
+          },
+          verdict: {
+            disposition: "accepted",
+            calibrated_confidence: 0.94,
+            calibrated_severity: "high",
+            rationale: "Direct source support.",
+          },
+        },
+      ],
+      evidence: [
+        {
+          evidence_id: "evidence-1",
+          relative_path: "src/auth.py",
+          content_hash: "abc123",
+          start_line: 4,
+          end_line: 5,
+          evidence_kind: "source",
+          provenance: { run_id: "run-fixture-1" },
+          excerpt: "return allow",
+          integrity: "valid",
+          redacted: false,
+        },
+      ],
+      review_history: [],
+    });
+    vi.mocked(apiClient.updateFinding).mockResolvedValue({
+      ...(await apiClient.finding("finding-1")),
+      review_state: "reviewed",
+      review_version: 1,
+    });
+
+    render(<App />);
+    expect(await screen.findByText(finding.title)).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Search"), "authorization");
+    await waitFor(() =>
+      expect(findings).toHaveBeenLastCalledWith(
+        expect.objectContaining({}),
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(window.location.search).toContain("search=authorization");
+    await user.click(screen.getByRole("button", { name: /Authorization check is bypassed/ }));
+    expect(await screen.findByText("return allow")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Reviewed" }));
+    await waitFor(() =>
+      expect(apiClient.updateFinding).toHaveBeenCalledWith("finding-1", {
+        review_state: "reviewed",
+        expected_version: 0,
+      }),
+    );
   });
 
   it("renders accepted findings, measured gaps, and synthesis from durable data", async () => {

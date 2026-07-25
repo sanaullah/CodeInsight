@@ -37,7 +37,9 @@ def test_database_initialization_is_idempotent_and_enables_wal(tmp_path: Path) -
         migrations = connection.execute(
             "SELECT version, checksum FROM schema_migrations ORDER BY version"
         ).fetchall()
-        assert [row["version"] for row in migrations] == [SCHEMA_VERSION]
+        assert [row["version"] for row in migrations] == list(
+            range(1, SCHEMA_VERSION + 1)
+        )
         assert len(migrations[0]["checksum"]) == 64
 
     assert list(tmp_path.rglob("*.db")) == [database_path]

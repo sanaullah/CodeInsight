@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, Request, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from api.config import VERSION_STRING, ApiSettings, load_environment
@@ -16,6 +16,8 @@ from api.models import (
     AnalysisRequest,
     AnalysisRun,
     CapabilitiesResponse,
+    FindingPage,
+    FindingReviewUpdate,
     HealthResponse,
     LanguageCapability,
     RecoveryResponse,
@@ -121,9 +123,7 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
         response_model=AnalysisAccepted,
         status_code=status.HTTP_202_ACCEPTED,
     )
-    async def create_analysis(
-        payload: AnalysisRequest, request: Request
-    ) -> AnalysisAccepted:
+    async def create_analysis(payload: AnalysisRequest, request: Request) -> AnalysisAccepted:
         current_service: AnalysisService = request.app.state.analysis_service
         try:
             run = await current_service.submit(payload)
@@ -154,9 +154,7 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
         "/api/v1/analyses/{run_id}/intelligence",
         response_model=AnalysisIntelligence,
     )
-    async def get_analysis_intelligence(
-        run_id: str, request: Request
-    ) -> AnalysisIntelligence:
+    async def get_analysis_intelligence(run_id: str, request: Request) -> AnalysisIntelligence:
         current_service: AnalysisService = request.app.state.analysis_service
         intelligence = await current_service.intelligence(run_id)
         if intelligence is None:
@@ -170,6 +168,99 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
         if run is None:
             raise HTTPException(status_code=404, detail="Analysis run not found")
         return run
+
+    @app.get("/api/v1/findings", response_model=FindingPage)
+    async def list_findings(
+        request: Request,
+        run_id: str | None = None,
+        search: str | None = Query(default=None, max_length=200),
+        severity: str | None = Query(default=None, pattern="^(info|low|medium|high|critical)$"),
+        review_state: str | None = Query(
+            default=None,
+            pattern="^(new|validated|acknowledged|reviewed|dismissed|reopened|resolved)$",
+        ),
+        min_confidence: float | None = Query(default=None, ge=0, le=1),
+        affected_path: str | None = Query(default=None, max_length=1000),
+        cursor: str | None = None,
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> FindingPage:
+        current_service: AnalysisService = request.app.state.analysis_service
+        result = await current_service.query_findings(
+            run_id=run_id,
+            search=search,
+            severity=severity,
+            review_state=review_state,
+            min_confidence=min_confidence,
+            affected_path=affected_path,
+            cursor=cursor,
+            limit=limit,
+        )
+        return FindingPage.model_validate(result)
+
+    @app.get("/api/v1/findings/{finding_id}")
+    async def get_finding(finding_id: str, request: Request) -> dict:
+        detail = await request.app.state.analysis_service.finding_detail(finding_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="Finding not found")
+        return detail
+
+    @app.put("/api/v1/findings/{finding_id}/review")
+    async def update_finding_review(
+        finding_id: str, payload: FindingReviewUpdate, request: Request
+    ) -> dict:
+        try:
+            detail = await request.app.state.analysis_service.update_finding_review(
+                finding_id,
+                review_state=payload.review_state,
+                note=payload.note,
+                expected_version=payload.expected_version,
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if detail is None:
+            raise HTTPException(status_code=404, detail="Finding not found")
+        return detail
+
+    @app.get("/api/v1/findings-export")
+    async def export_findings(
+        request: Request,
+        format: str = Query(default="json", pattern="^(json|csv)$"),
+        run_id: str | None = None,
+    ):
+        items: list[dict] = []
+        cursor: str | None = None
+        while True:
+            result = await request.app.state.analysis_service.query_findings(
+                run_id=run_id, cursor=cursor, limit=200
+            )
+            items.extend(result["items"])
+            cursor = result["next_cursor"]
+            if cursor is None:
+                break
+        headers = {"Content-Disposition": f'attachment; filename="codeinsight-findings.{format}"'}
+        if format == "json":
+            return JSONResponse({"findings": items}, headers=headers)
+        import csv
+        import io
+
+        output = io.StringIO()
+        writer = csv.DictWriter(
+            output,
+            fieldnames=[
+                "finding_id",
+                "run_id",
+                "severity",
+                "confidence",
+                "review_state",
+                "title",
+                "claim",
+                "recommendation",
+            ],
+            extrasaction="ignore",
+        )
+        writer.writeheader()
+        writer.writerows(items)
+        return PlainTextResponse(output.getvalue(), media_type="text/csv", headers=headers)
 
     @app.post("/api/v1/recovery", response_model=RecoveryResponse)
     async def recover_analysis_work(request: Request) -> RecoveryResponse:
@@ -186,4 +277,3 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
 
 
 app = create_app()
-

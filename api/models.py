@@ -204,3 +204,22 @@ class AnalysisIntelligence(BaseModel):
     coverage: list[dict[str, Any]] = Field(default_factory=list)
     model_calls: list[dict[str, Any]] = Field(default_factory=list)
     usage: dict[str, int | float] = Field(default_factory=dict)
+
+
+FindingReviewState = Literal[
+    "new", "validated", "acknowledged", "reviewed", "dismissed", "reopened", "resolved"
+]
+
+
+class FindingReviewUpdate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    review_state: FindingReviewState
+    note: str | None = Field(default=None, max_length=2000)
+    expected_version: int | None = Field(default=None, ge=0)
+
+
+class FindingPage(BaseModel):
+    items: list[dict[str, Any]]
+    next_cursor: str | None = None
+    counts_by_severity: dict[str, int] = Field(default_factory=dict)
