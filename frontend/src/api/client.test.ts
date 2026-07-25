@@ -34,6 +34,22 @@ describe("apiClient", () => {
     );
   });
 
+  it("encodes the source run and starts a latest-files rerun", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      response({
+        run_id: "run-new",
+        status: "queued",
+        status_url: "/api/v1/analyses/run-new",
+      }),
+    );
+
+    await apiClient.rerun("run/one");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/analyses/run%2Fone/rerun",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("maps list, intelligence, and recovery endpoints", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => response([]));
 

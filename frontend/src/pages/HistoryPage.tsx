@@ -17,6 +17,9 @@ import {
   StatusBadge,
 } from "../components/primitives";
 import { formatDuration, formatLabel, formatTokens, shortId } from "../format";
+import { navigate } from "../router";
+
+const terminal = new Set(["succeeded", "failed", "cancelled", "needs_attention"]);
 
 export function HistoryPage() {
   const initial = useMemo(() => new URLSearchParams(window.location.search), []);
@@ -30,6 +33,7 @@ export function HistoryPage() {
   const [selected, setSelected] = useState<string[]>([]);
   const [comparison, setComparison] = useState<RunComparison | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [rerunningRunId, setRerunningRunId] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -74,6 +78,19 @@ export function HistoryPage() {
       setError(reason instanceof Error ? reason.message : "Unable to load more review history");
     } finally {
       setLoadingMore(false);
+    }
+  }
+
+  async function rerunLatest(runId: string) {
+    setRerunningRunId(runId);
+    setError(null);
+    try {
+      const accepted = await apiClient.rerun(runId);
+      navigate(`/reviews/${accepted.run_id}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to rerun review");
+    } finally {
+      setRerunningRunId(null);
     }
   }
 
@@ -181,6 +198,7 @@ export function HistoryPage() {
                     <th scope="col">Findings</th>
                     <th scope="col">Usage</th>
                     <th scope="col">Duration</th>
+                    <th scope="col">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -221,6 +239,22 @@ export function HistoryPage() {
                         {run.duration_seconds === null
                           ? "—"
                           : formatDuration(run.started_at, run.completed_at)}
+                      </td>
+                      <td>
+                        <button
+                          aria-label={`Rerun ${run.run_id} with latest files`}
+                          className="button button-secondary"
+                          disabled={!terminal.has(run.status) || rerunningRunId !== null}
+                          onClick={() => rerunLatest(run.run_id)}
+                          title={
+                            terminal.has(run.status)
+                              ? "Create a new review by rescanning the current project files"
+                              : "Wait for this review to finish before rerunning it"
+                          }
+                          type="button"
+                        >
+                          {rerunningRunId === run.run_id ? "Starting…" : "Rerun latest"}
+                        </button>
                       </td>
                     </tr>
                   ))}

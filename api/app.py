@@ -149,6 +149,25 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
         current_service: AnalysisService = request.app.state.analysis_service
         return await current_service.list(limit)
 
+    @app.post(
+        "/api/v1/analyses/{run_id}/rerun",
+        response_model=AnalysisAccepted,
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+    async def rerun_analysis(run_id: str, request: Request) -> AnalysisAccepted:
+        current_service: AnalysisService = request.app.state.analysis_service
+        try:
+            run = await current_service.rerun_latest(run_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if run is None:
+            raise HTTPException(status_code=404, detail="Analysis run not found")
+        return AnalysisAccepted(
+            run_id=run.run_id,
+            status=run.status,
+            status_url=f"/api/v1/analyses/{run.run_id}",
+        )
+
     @app.get("/api/v1/analyses/{run_id}", response_model=AnalysisRun)
     async def get_analysis(run_id: str, request: Request) -> AnalysisRun:
         current_service: AnalysisService = request.app.state.analysis_service

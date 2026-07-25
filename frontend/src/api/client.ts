@@ -75,6 +75,10 @@ export const apiClient = {
       method: "POST",
       body: JSON.stringify(payload),
     }),
+  rerun: (runId: string) =>
+    request<AnalysisAccepted>(`/api/v1/analyses/${encodeURIComponent(runId)}/rerun`, {
+      method: "POST",
+    }),
   cancel: (runId: string) =>
     request<AnalysisRun>(`/api/v1/analyses/${encodeURIComponent(runId)}`, {
       method: "DELETE",

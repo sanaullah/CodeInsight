@@ -144,6 +144,46 @@ async def test_submit_rejects_missing_directory(tmp_path: Path) -> None:
         )
 
 
+@pytest.mark.asyncio
+async def test_rerun_clones_request_and_records_latest_files_policy(
+    tmp_path: Path,
+) -> None:
+    service = AnalysisService(
+        FakeExecutor(),
+        database_path=tmp_path / "codeinsight.db",
+        max_concurrent=1,
+    )
+    source = await service.submit(
+        AnalysisRequest(
+            project_path=str(tmp_path),
+            goal="Recheck current files",
+            file_extensions=["py"],
+            selected_directories=["src"],
+            mode="security",
+            max_agents=2,
+            max_waves=1,
+            max_tasks=5,
+            max_total_tokens=500,
+            max_cost_usd=1,
+            max_elapsed_seconds=30,
+        )
+    )
+
+    rerun = await service.rerun_latest(source.run_id)
+    assert rerun is not None
+    assert rerun.run_id != source.run_id
+    assert rerun.request == source.request
+    persisted = await service.get(rerun.run_id)
+    assert persisted is not None
+    assert persisted.events[1].event_type == "analysis_rerun_requested"
+    assert persisted.events[1].data == {
+        "source_run_id": source.run_id,
+        "input_policy": "latest-files",
+    }
+    assert await service.rerun_latest("missing") is None
+    await service.close()
+
+
 def test_request_normalizes_extensions() -> None:
     request = AnalysisRequest(
         project_path=".",

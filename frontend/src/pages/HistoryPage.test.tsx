@@ -75,3 +75,42 @@ it("supports deselection and reports comparison failures", async () => {
   await user.click(screen.getByRole("button", { name: "Compare selected (2/2)" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Comparison unavailable");
 });
+
+it("reruns a completed review with latest files and opens the new run", async () => {
+  vi.spyOn(apiClient, "history").mockResolvedValue({ items: runs, next_cursor: null });
+  vi.spyOn(apiClient, "historyTrends").mockResolvedValue({
+    days: 30,
+    partial: false,
+    buckets: [],
+  });
+  const rerun = vi.spyOn(apiClient, "rerun").mockResolvedValue({
+    run_id: "run-latest",
+    status: "queued",
+    status_url: "/api/v1/analyses/run-latest",
+  });
+  const user = userEvent.setup();
+  render(<HistoryPage />);
+
+  await user.click(await screen.findByRole("button", { name: "Rerun run-001 with latest files" }));
+  expect(rerun).toHaveBeenCalledWith("run-001");
+  expect(window.location.pathname).toBe("/reviews/run-latest");
+});
+
+it("reports latest-files rerun failures without removing history", async () => {
+  vi.spyOn(apiClient, "history").mockResolvedValue({ items: runs, next_cursor: null });
+  vi.spyOn(apiClient, "historyTrends").mockResolvedValue({
+    days: 30,
+    partial: false,
+    buckets: [],
+  });
+  vi.spyOn(apiClient, "rerun").mockRejectedValue(new Error("Saved project path is missing"));
+  const user = userEvent.setup();
+  render(<HistoryPage />);
+
+  await user.click(await screen.findByRole("button", { name: "Rerun run-001 with latest files" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent("Saved project path is missing");
+  expect(screen.getByRole("link", { name: /run-001/i })).toHaveAttribute(
+    "href",
+    "/reviews/run-001",
+  );
+});

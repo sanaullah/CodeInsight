@@ -302,7 +302,12 @@ class AnalysisService:
                 await self._schedule(run_id)
             return recovered
 
-    async def submit(self, request: AnalysisRequest) -> AnalysisRun:
+    async def submit(
+        self,
+        request: AnalysisRequest,
+        *,
+        source_run_id: str | None = None,
+    ) -> AnalysisRun:
         await self.start()
         normalized_request = request.model_copy(
             update={"project_path": self._resolve_project_path(request.project_path)}
@@ -316,8 +321,27 @@ class AnalysisService:
             mode=normalized_request.mode.value,
             budget=budget.model_dump(mode="json"),
         )
+        if source_run_id is not None:
+            self._get_ledger().append_event(
+                record["run_id"],
+                "analysis_rerun_requested",
+                {
+                    "source_run_id": source_run_id,
+                    "input_policy": "latest-files",
+                },
+            )
         await self._schedule(record["run_id"])
         return self._to_model(record)
+
+    async def rerun_latest(self, source_run_id: str) -> AnalysisRun | None:
+        """Clone the expressed request and build a fresh snapshot from current files."""
+
+        await self.start()
+        source = self._get_ledger().get_run(source_run_id)
+        if source is None:
+            return None
+        request = AnalysisRequest.from_persisted(source["request"])
+        return await self.submit(request, source_run_id=source_run_id)
 
     async def get(self, run_id: str) -> AnalysisRun | None:
         await self.start()

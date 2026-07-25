@@ -83,6 +83,12 @@ def test_health_frontend_and_analysis_lifecycle(tmp_path: Path) -> None:
         run = client.get(f"/api/v1/analyses/{run_id}")
         assert run.status_code == 200
         assert run.json()["status"] in {"queued", "running", "succeeded"}
+        rerun = client.post(f"/api/v1/analyses/{run_id}/rerun")
+        assert rerun.status_code == 202
+        assert rerun.json()["run_id"] != run_id
+        assert rerun.json()["status_url"] == (
+            f"/api/v1/analyses/{rerun.json()['run_id']}"
+        )
 
 
 def test_analysis_rejects_invalid_project_path(tmp_path: Path) -> None:
@@ -110,6 +116,7 @@ def test_missing_run_routes_and_list_limits_are_truthful(tmp_path: Path) -> None
             client.get("/api/v1/analyses/missing/intelligence").status_code == 404
         )
         assert client.delete("/api/v1/analyses/missing").status_code == 404
+        assert client.post("/api/v1/analyses/missing/rerun").status_code == 404
         assert client.get("/api/v1/analyses?limit=0").status_code == 422
         assert client.get("/api/v1/analyses?limit=101").status_code == 422
         assert client.get("/api/v1/analyses?limit=1").json() == []

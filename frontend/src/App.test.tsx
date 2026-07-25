@@ -45,6 +45,7 @@ beforeEach(() => {
     buckets: [],
   });
   vi.spyOn(apiClient, "compareRuns").mockRejectedValue(new Error("Runs not selected"));
+  vi.spyOn(apiClient, "rerun").mockRejectedValue(new Error("Rerun not requested"));
   vi.spyOn(apiClient, "settings").mockResolvedValue({
     settings: {
       default_mode: "deep",
@@ -815,6 +816,44 @@ describe("application shell", () => {
     expect(screen.getByText("Unsupported: generated parser")).toBeInTheDocument();
     expect(screen.getByText("Prioritize the verified authorization defect.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cancel review" })).not.toBeInTheDocument();
+  });
+
+  it("reruns a terminal review against latest files and opens the new run", async () => {
+    window.history.replaceState({}, "", "/reviews/run-fixture-1");
+    vi.mocked(apiClient.getRun).mockResolvedValue({
+      ...runningRunFixture,
+      status: "succeeded",
+      completed_at: "2026-07-25T12:02:05Z",
+      current_stage: "complete",
+    });
+    vi.mocked(apiClient.rerun).mockResolvedValue({
+      run_id: "run-latest",
+      status: "queued",
+      status_url: "/api/v1/analyses/run-latest",
+    });
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: "Rerun with latest files" }));
+    expect(apiClient.rerun).toHaveBeenCalledWith("run-fixture-1");
+    expect(window.location.pathname).toBe("/reviews/run-latest");
+  });
+
+  it("keeps a terminal review visible when latest-files rerun fails", async () => {
+    vi.mocked(apiClient.getRun).mockResolvedValue({
+      ...runningRunFixture,
+      status: "failed",
+      completed_at: "2026-07-25T12:02:05Z",
+    });
+    vi.mocked(apiClient.rerun).mockRejectedValue(new Error("Current project path is unavailable"));
+    const user = userEvent.setup();
+    render(<CommandCenterPage runId="run-fixture-1" />);
+
+    await user.click(await screen.findByRole("button", { name: "Rerun with latest files" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Current project path is unavailable",
+    );
+    expect(screen.getByRole("heading", { name: "Review command center" })).toBeInTheDocument();
   });
 
   it("surfaces submit failures and re-enables the form", async () => {

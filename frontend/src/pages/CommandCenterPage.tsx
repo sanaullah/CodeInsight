@@ -13,6 +13,7 @@ import { SpecialistCard } from "../components/SpecialistCard";
 import { StageStepper } from "../components/StageStepper";
 import { formatDuration, formatLabel, formatTokens, shortId } from "../format";
 import { useRun } from "../hooks/useRun";
+import { navigate } from "../router";
 
 const terminal = new Set(["succeeded", "failed", "cancelled", "needs_attention"]);
 
@@ -20,6 +21,8 @@ export function CommandCenterPage({ runId }: { runId: string }) {
   const { run, intelligence, loading, error, intelligenceError, refresh, setRun } = useRun(runId);
   const [cancelling, setCancelling] = useState(false);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [rerunning, setRerunning] = useState(false);
+  const [rerunError, setRerunError] = useState<string | null>(null);
 
   async function cancel() {
     setCancelling(true);
@@ -31,6 +34,19 @@ export function CommandCenterPage({ runId }: { runId: string }) {
       setCancelError(reason instanceof Error ? reason.message : "Unable to cancel review");
     } finally {
       setCancelling(false);
+    }
+  }
+
+  async function rerunLatest() {
+    setRerunning(true);
+    setRerunError(null);
+    try {
+      const accepted = await apiClient.rerun(runId);
+      navigate(`/reviews/${accepted.run_id}`);
+    } catch (reason) {
+      setRerunError(reason instanceof Error ? reason.message : "Unable to rerun review");
+    } finally {
+      setRerunning(false);
     }
   }
 
@@ -97,7 +113,17 @@ export function CommandCenterPage({ runId }: { runId: string }) {
               >
                 {cancelling ? "Cancelling…" : "Cancel review"}
               </button>
-            ) : null}
+            ) : (
+              <button
+                className="button button-secondary"
+                disabled={rerunning}
+                onClick={rerunLatest}
+                title="Create a new review by rescanning the current project files"
+                type="button"
+              >
+                {rerunning ? "Starting rerun…" : "Rerun with latest files"}
+              </button>
+            )}
           </div>
         }
         description={`${run.request.project_path} · ${formatLabel(run.mode)} · run ${shortId(run.run_id)}`}
@@ -149,6 +175,7 @@ export function CommandCenterPage({ runId }: { runId: string }) {
         />
       ) : null}
       {cancelError ? <ErrorNotice message={cancelError} /> : null}
+      {rerunError ? <ErrorNotice message={rerunError} /> : null}
 
       <div className="command-grid">
         <div className="command-main">
