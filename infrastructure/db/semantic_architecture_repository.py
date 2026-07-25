@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -232,7 +233,7 @@ class SqliteSemanticArchitectureRepository:
                     for item in projection.provenance
                 ],
             )
-            return {
+            counts = {
                 "components": len(projection.components),
                 "memberships": len(projection.memberships),
                 "boundaries": len(projection.boundaries),
@@ -241,8 +242,56 @@ class SqliteSemanticArchitectureRepository:
                 "relations": len(projection.relations),
                 "provenance": len(projection.provenance),
             }
+            completeness = {item.completeness.value for item in projection.components}
+            if not completeness:
+                status = "unknown"
+            elif completeness == {"unsupported"}:
+                status = "unsupported"
+            elif completeness == {"complete"}:
+                status = "complete"
+            else:
+                status = "partial"
+            connection.execute(
+                """
+                INSERT INTO semantic_projection_state(
+                    snapshot_id, extractor_version, status, counts_json,
+                    generated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(snapshot_id) DO UPDATE SET
+                    extractor_version = excluded.extractor_version,
+                    status = excluded.status,
+                    counts_json = excluded.counts_json,
+                    generated_at = excluded.generated_at
+                """,
+                (
+                    snapshot_id,
+                    projection.extractor_version,
+                    status,
+                    _json(counts),
+                    datetime.now(UTC).isoformat(),
+                ),
+            )
+            return counts
 
         return self.ledger.write_transaction(operation)
+
+    def projection_state(self, snapshot_id: str) -> dict[str, Any] | None:
+        with database_connection(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT extractor_version, status, counts_json, generated_at
+                FROM semantic_projection_state WHERE snapshot_id = ?
+                """,
+                (snapshot_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return {
+                "extractor_version": str(row["extractor_version"]),
+                "status": str(row["status"]),
+                "counts": json.loads(row["counts_json"]),
+                "generated_at": str(row["generated_at"]),
+            }
 
     def projection_counts(self, snapshot_id: str) -> dict[str, int] | None:
         with database_connection(self.database_path) as connection:

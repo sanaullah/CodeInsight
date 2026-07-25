@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 DEFAULT_BUSY_TIMEOUT_MS = 5_000
 
 _MIGRATION_1 = (
@@ -588,11 +588,29 @@ _MIGRATION_4 = (
     "ON repository_snapshots(project_id, created_at)",
 )
 
+_MIGRATION_5 = (
+    """
+    CREATE TABLE semantic_projection_state (
+        snapshot_id TEXT PRIMARY KEY REFERENCES repository_snapshots(snapshot_id)
+            ON DELETE CASCADE,
+        extractor_version TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (
+            status IN ('complete', 'partial', 'unknown', 'unsupported', 'failed')
+        ),
+        counts_json TEXT NOT NULL DEFAULT '{}',
+        generated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_semantic_projection_version "
+    "ON semantic_projection_state(extractor_version, status)",
+)
+
 MIGRATIONS: dict[int, tuple[str, tuple[str, ...]]] = {
     1: ("initial durable application ledger", _MIGRATION_1),
     2: ("durable finding review lifecycle", _MIGRATION_2),
     3: ("durable local settings and review presets", _MIGRATION_3),
     4: ("evidence-derived semantic architecture ledger", _MIGRATION_4),
+    5: ("semantic extractor projection version state", _MIGRATION_5),
 }
 
 

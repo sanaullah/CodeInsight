@@ -195,7 +195,7 @@ def test_semantic_schema_is_canonical_and_indexed(tmp_path: Path) -> None:
                 "SELECT name FROM sqlite_master WHERE type = 'index'"
             )
         }
-    assert version == SCHEMA_VERSION == 4
+    assert version == SCHEMA_VERSION == 5
     assert {
         "semantic_components",
         "semantic_memberships",
@@ -218,6 +218,7 @@ def test_projection_replace_is_atomic_idempotent_and_queryable(tmp_path: Path) -
 
     assert repository.replace(projection)["components"] == 2
     assert repository.replace(projection) == repository.projection_counts(snapshot_id)
+    assert repository.projection_state(snapshot_id)["extractor_version"] == "semantic-v1"
     component = repository.component("component-service")
     assert component is not None
     assert component["stable_key"] == "service:api"

@@ -113,6 +113,25 @@ def test_index_persists_shared_files_symbols_edges_ownership_and_artifacts(
                 ).fetchone()["count"]
                 >= 1
             )
+            projection = connection.execute(
+                """
+                SELECT extractor_version, status
+                FROM semantic_projection_state WHERE snapshot_id = ?
+                """,
+                (result.snapshot.snapshot_id,),
+            ).fetchone()
+            assert projection["extractor_version"] == "semantic-topology-v1"
+            assert projection["status"] == "partial"
+            assert (
+                connection.execute(
+                    """
+                    SELECT COUNT(*) FROM semantic_components
+                    WHERE snapshot_id = ?
+                    """,
+                    (result.snapshot.snapshot_id,),
+                ).fetchone()[0]
+                >= 1
+            )
     finally:
         ledger.close()
 

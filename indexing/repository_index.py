@@ -17,7 +17,17 @@ from uuid import uuid4
 
 from domain.contracts import RepositorySnapshot
 from infrastructure.artifacts.store import FilesystemArtifactStore, StoredArtifact
+from infrastructure.db.semantic_architecture_repository import (
+    SqliteSemanticArchitectureRepository,
+)
 from infrastructure.db.snapshot_repository import SqliteSnapshotRepository
+
+from .semantic_topology import (
+    SEMANTIC_EXTRACTOR_VERSION,
+    SemanticFile,
+    SemanticTopologyInput,
+    extract_semantic_topology,
+)
 
 SCANNER_VERSION = "native-index-v1"
 DEFAULT_IGNORE_DIRECTORIES = frozenset(
@@ -218,6 +228,7 @@ class RepositoryIndexer:
         if cached is not None:
             snapshot = _snapshot_from_record(cached)
             _assign_file_ids(scanned, snapshot.snapshot_id)
+            self._ensure_semantic_projection(snapshot, root.name, scanned)
             target_paths = self._target_paths(
                 snapshot.snapshot_id,
                 scanned,
@@ -301,6 +312,8 @@ class RepositoryIndexer:
             if concurrent is None:
                 raise RuntimeError("concurrent snapshot was not readable")
             snapshot = _snapshot_from_record(concurrent)
+            _assign_file_ids(scanned, snapshot.snapshot_id)
+        self._ensure_semantic_projection(snapshot, root.name, scanned)
         target_paths = self._target_paths(
             snapshot.snapshot_id,
             scanned,
@@ -316,6 +329,39 @@ class RepositoryIndexer:
             changed_paths=tuple(git["changed_paths"]),
             target_paths=target_paths,
         )
+
+    def _ensure_semantic_projection(
+        self,
+        snapshot: RepositorySnapshot,
+        project_name: str,
+        scanned: list[_ScannedFile],
+    ) -> None:
+        semantic_repository = SqliteSemanticArchitectureRepository(
+            self.repository.ledger
+        )
+        state = semantic_repository.projection_state(snapshot.snapshot_id)
+        if (
+            state is not None
+            and state["extractor_version"] == SEMANTIC_EXTRACTOR_VERSION
+        ):
+            return
+        projection = extract_semantic_topology(
+            SemanticTopologyInput(
+                snapshot_id=snapshot.snapshot_id,
+                project_name=project_name,
+                files=tuple(
+                    SemanticFile(
+                        file_id=item.file_id,
+                        relative_path=item.relative_path,
+                        language=item.language,
+                        text=item.text,
+                        line_count=item.line_count,
+                    )
+                    for item in scanned
+                ),
+            )
+        )
+        semantic_repository.replace(projection)
 
     def _target_paths(
         self,
