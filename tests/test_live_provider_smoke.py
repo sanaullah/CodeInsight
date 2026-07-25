@@ -6,6 +6,7 @@ credentials, endpoint URLs, prompts, source contents, or raw model responses.
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from dataclasses import replace
@@ -13,11 +14,18 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
+from analysis.native.harness import SpecialistOutput
 from api.app import create_app
 from api.config import ApiSettings, load_environment
 from application.analysis_service import AnalysisService
+from application.model_gateway import ModelRequest, ModelResponse, ProviderUnavailable
 from infrastructure.llm.gateway import OpenAICompatibleGateway
+from infrastructure.llm.instructor_gateway import (
+    InstructorOpenAICompatibleGateway,
+    provider_capability_profile,
+)
 
 pytestmark = pytest.mark.live_provider
 
@@ -60,6 +68,75 @@ def _fixture_repository(root: Path) -> Path:
         encoding="utf-8",
     )
     return repository
+
+
+@pytest.mark.asyncio
+async def test_live_structured_output_ab_compatibility(tmp_path: Path) -> None:
+    """Compare aggregate contract results without printing content or secrets."""
+
+    settings = _configured_settings(tmp_path / "ab-state.db")
+    request = ModelRequest(
+        run_id="live-ab",
+        wave_id="wave-1",
+        task_id="task-1",
+        model=settings.default_model,
+        system_prompt=(
+            "Analyze the supplied empty repository scope and return the required "
+            "structured result without inventing evidence."
+        ),
+        user_prompt=json.dumps({"role": "compatibility-smoke", "files": []}),
+        response_schema=SpecialistOutput.model_json_schema(),
+        response_model=SpecialistOutput,
+        max_output_tokens=1_000,
+        timeout_seconds=45,
+        token_budget=4_000,
+        cost_budget_usd=0.05,
+    )
+    direct = OpenAICompatibleGateway(
+        base_url=settings.model_base_url or "",
+        api_key=settings.model_api_key,
+        timeout_cap_seconds=45,
+        max_output_tokens_cap=1_000,
+        prefer_strict_schema=False,
+    )
+    adapted = InstructorOpenAICompatibleGateway(
+        base_url=settings.model_base_url or "",
+        api_key=settings.model_api_key,
+        profile=provider_capability_profile("instructor-json"),
+    )
+
+    async def measure(
+        name: str,
+        gateway: OpenAICompatibleGateway | InstructorOpenAICompatibleGateway,
+    ) -> dict[str, int | float | str]:
+        started = time.perf_counter()
+        response: ModelResponse | None = None
+        valid = 0
+        try:
+            response = await gateway.complete(request)
+            SpecialistOutput.model_validate(response.content)
+            valid = 1
+        except (ProviderUnavailable, ValidationError):
+            valid = 0
+        usage = response.usage if response is not None else None
+        return {
+            "gateway": name,
+            "valid_output_rate": valid,
+            "latency_ms": round((time.perf_counter() - started) * 1_000, 2),
+            "tokens": usage.total_tokens if usage else 0,
+            "cost_usd": usage.cost_usd if usage else 0,
+        }
+
+    try:
+        results = [
+            await measure("direct", direct),
+            await measure("instructor-json", adapted),
+        ]
+    finally:
+        await adapted.aclose()
+
+    print("structured_output_ab=" + json.dumps(results, sort_keys=True))
+    assert results[1]["valid_output_rate"] == 1
 
 
 def test_real_provider_completes_bounded_durable_api_workflow(

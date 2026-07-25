@@ -7,6 +7,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from pydantic import BaseModel
+
 
 @dataclass(frozen=True, slots=True)
 class ModelUsage:
@@ -40,6 +42,7 @@ class ModelRequest:
     timeout_seconds: float
     token_budget: int
     cost_budget_usd: float
+    response_model: type[BaseModel] | None = None
     correlation: dict[str, str] = field(default_factory=dict)
 
 
@@ -69,10 +72,12 @@ class ProviderUnavailable(RuntimeError):
         *,
         category: str = "provider_unavailable",
         http_status: int | None = None,
+        usage: ModelUsage | None = None,
     ) -> None:
         super().__init__(message)
         self.category = category
         self.http_status = http_status
+        self.usage = usage or ModelUsage()
 
 
 class BoundedModelGateway:
@@ -107,15 +112,26 @@ class BoundedModelGateway:
             if cost_limit > 0 and used.cost_usd >= cost_limit:
                 raise ModelBudgetExceeded("run cost budget is exhausted")
         async with self._semaphore:
-            response = await asyncio.wait_for(
-                self.gateway.complete(request), timeout=request.timeout_seconds
-            )
+            try:
+                response = await asyncio.wait_for(
+                    self.gateway.complete(request), timeout=request.timeout_seconds
+                )
+            except ProviderUnavailable as exc:
+                if exc.usage.total_tokens or exc.usage.cost_usd:
+                    await self._commit_usage(request, exc.usage)
+                raise
+        await self._commit_usage(request, response.usage)
+        return response
+
+    async def _commit_usage(
+        self, request: ModelRequest, usage: ModelUsage
+    ) -> None:
         async with self._lock:
             previous = self._usage.get(request.run_id, ModelUsage())
             combined = ModelUsage(
-                input_tokens=previous.input_tokens + response.usage.input_tokens,
-                output_tokens=previous.output_tokens + response.usage.output_tokens,
-                cost_usd=previous.cost_usd + response.usage.cost_usd,
+                input_tokens=previous.input_tokens + usage.input_tokens,
+                output_tokens=previous.output_tokens + usage.output_tokens,
+                cost_usd=previous.cost_usd + usage.cost_usd,
             )
             token_limit, cost_limit = self._limits.get(
                 request.run_id, (request.token_budget, request.cost_budget_usd)
@@ -125,11 +141,15 @@ class BoundedModelGateway:
             if cost_limit >= 0 and combined.cost_usd > cost_limit:
                 raise ModelBudgetExceeded("provider response exceeded run cost budget")
             self._usage[request.run_id] = combined
-        return response
 
     async def usage_for_run(self, run_id: str) -> ModelUsage:
         async with self._lock:
             return self._usage.get(run_id, ModelUsage())
+
+    async def aclose(self) -> None:
+        close = getattr(self.gateway, "aclose", None)
+        if close is not None:
+            await close()
 
 
 class OfflineModelGateway:

@@ -17,8 +17,15 @@
 
 ## Validation
 
+- Use fast checks while iterating. Before a normal milestone commit/push, run
+  targeted tests plus the applicable lint, type, contract, and production-build
+  gates for every affected path.
+- Reserve the full repository release gate for explicitly authorized releases
+  and unusually broad or high-risk changes. This does not reduce required
+  tests or branch-aware coverage for changed runtime paths.
 - Frontend changes: run `npm.cmd run check`, `npm.cmd test`, and `npm.cmd run build` from `frontend/`.
-- Python changes: run the focused tests, full branch-aware coverage gate, Ruff, and compile checks defined in `pyproject.toml`.
+- Python changes: run focused tests, branch-aware coverage for changed runtime
+  paths, Ruff, and compile checks defined in `pyproject.toml`.
 - Before committing, run `git diff --check`, inspect the staged diff, and record any validation limitation rather than looping on browser setup.
 - Timebox live browser validation to two minutes; deterministic tests and the production build remain required.
 

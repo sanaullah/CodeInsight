@@ -48,6 +48,18 @@ def _enabled(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _provider_capability_profile() -> str:
+    value = os.getenv("CODEINSIGHT_PROVIDER_CAPABILITY_PROFILE", "direct").strip()
+    allowed = {"direct", "instructor-json", "instructor-json-schema"}
+    if value not in allowed:
+        choices = ", ".join(sorted(allowed))
+        raise ValueError(
+            "CODEINSIGHT_PROVIDER_CAPABILITY_PROFILE must be one of: "
+            f"{choices}"
+        )
+    return value
+
+
 def default_data_directory() -> Path:
     configured = os.getenv("CODEINSIGHT_DATA_DIR")
     if configured:
@@ -74,6 +86,7 @@ class ApiSettings:
     model_base_url: str | None = None
     model_api_key: str = ""
     default_model: str = "local-model"
+    provider_capability_profile: str = "direct"
     max_concurrent_model_calls: int = 2
     langfuse_enabled: bool = False
     langfuse_public_key: str = ""
@@ -101,6 +114,7 @@ class ApiSettings:
             default_model=os.getenv(
                 "CODEINSIGHT_DEFAULT_MODEL", os.getenv("DEFAULT_MODEL", "local-model")
             ),
+            provider_capability_profile=_provider_capability_profile(),
             max_concurrent_model_calls=_positive_int(
                 "CODEINSIGHT_MAX_CONCURRENT_MODEL_CALLS", 2
             ),

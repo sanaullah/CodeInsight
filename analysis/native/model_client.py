@@ -55,10 +55,25 @@ class GatewaySpecialistClient:
             ],
         }
         user_prompt = json.dumps(user_payload, sort_keys=True)
+        provider = getattr(self.gateway, "gateway", self.gateway)
+        provider_hint = str(
+            getattr(provider, "gateway_identity", type(provider).__name__)
+        )
+        schema_json = json.dumps(
+            SpecialistOutput.model_json_schema(),
+            sort_keys=True,
+            separators=(",", ":"),
+        )
         request_hash = hashlib.sha256(
             (
-                "native-specialist-v1\0"
+                "native-specialist-v2\0"
                 + self.model
+                + "\0"
+                + provider_hint
+                + "\0"
+                + str(SPECIALIST_PROMPT_VERSION)
+                + "\0"
+                + schema_json
                 + "\0"
                 + user_prompt
             ).encode()
@@ -78,7 +93,6 @@ class GatewaySpecialistClient:
             "task_id": request.task_id,
             "model_call_id": model_call_id,
         }
-        provider_hint = type(getattr(self.gateway, "gateway", self.gateway)).__name__
         self.prompts.record(
             prompt_artifact_id=prompt_artifact_id,
             run_id=request.run_id,
@@ -120,6 +134,7 @@ class GatewaySpecialistClient:
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     response_schema=SpecialistOutput.model_json_schema(),
+                    response_model=SpecialistOutput,
                     max_output_tokens=min(
                         self.max_output_tokens, max(1, request.token_budget)
                     ),

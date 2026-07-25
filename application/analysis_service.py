@@ -49,6 +49,10 @@ from infrastructure.db.settings_repository import SqliteSettingsRepository
 from infrastructure.db.snapshot_repository import SqliteSnapshotRepository
 from infrastructure.db.task_repository import SqliteTaskRepository
 from infrastructure.llm.gateway import OpenAICompatibleGateway
+from infrastructure.llm.instructor_gateway import (
+    InstructorOpenAICompatibleGateway,
+    provider_capability_profile,
+)
 from infrastructure.observability.langfuse import LangfuseTraceExporter
 from workflow.task_scheduler import NativeTaskScheduler
 
@@ -253,14 +257,24 @@ class AnalysisService:
         if self.executor is not None:
             return self.executor
         offline = self._configured_gateway is None and not self.settings.model_base_url
-        provider: ModelGateway = self._configured_gateway or (
-            OpenAICompatibleGateway(
+        profile = provider_capability_profile(
+            self.settings.provider_capability_profile
+        )
+        if self._configured_gateway is not None:
+            provider: ModelGateway = self._configured_gateway
+        elif not self.settings.model_base_url:
+            provider = OfflineModelGateway()
+        elif profile.instructor_supported:
+            provider = InstructorOpenAICompatibleGateway(
+                base_url=self.settings.model_base_url,
+                api_key=self.settings.model_api_key,
+                profile=profile,
+            )
+        else:
+            provider = OpenAICompatibleGateway(
                 base_url=self.settings.model_base_url,
                 api_key=self.settings.model_api_key,
             )
-            if self.settings.model_base_url
-            else OfflineModelGateway()
-        )
         bounded = BoundedModelGateway(
             provider,
             max_concurrent=self.settings.max_concurrent_model_calls,
@@ -596,6 +610,11 @@ class AnalysisService:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        if isinstance(self.executor, NativeAnalysisExecutor):
+            gateway = self.executor.gateway
+            close = getattr(gateway, "aclose", None)
+            if close is not None:
+                await close()
         if self._tracer is not None:
             self._tracer.close()
         if self._ledger is not None:
