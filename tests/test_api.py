@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any
 
@@ -32,7 +33,20 @@ def test_health_frontend_and_analysis_lifecycle(tmp_path: Path) -> None:
     with TestClient(app) as client:
         health = client.get("/api/v1/health")
         assert health.status_code == 200
-        assert health.json()["max_concurrent_analyses"] == 1
+        health_body = health.json()
+        assert health_body["max_concurrent_analyses"] == 1
+        assert health_body["runtime"] == {
+            "application_server": "FastAPI",
+            "environment_manager": "uv",
+            "database_engine": "SQLite",
+            "database_journal_mode": "WAL",
+            "database_schema_version": 1,
+            "artifact_store": "filesystem",
+            "api_docs_url": "/api/docs",
+            "read_only_analysis": True,
+            "build_commit": None,
+            "build_time": None,
+        }
 
         capabilities = client.get("/api/v1/capabilities")
         assert capabilities.status_code == 200
@@ -48,7 +62,15 @@ def test_health_frontend_and_analysis_lifecycle(tmp_path: Path) -> None:
 
         frontend = client.get("/")
         assert frontend.status_code == 200
-        assert "Turn a codebase into a focused review" in frontend.text
+        assert 'id="app-root"' in frontend.text
+        assets = re.findall(r'(?:src|href)="(/assets/[^"]+)"', frontend.text)
+        assert len(assets) == 2
+        for asset in assets:
+            response = client.get(asset)
+            assert response.status_code == 200
+        assert client.get("/new-review").text == frontend.text
+        assert client.get("/reviews/deep-link").text == frontend.text
+        assert client.get("/api/missing").status_code == 404
 
         created = client.post(
             "/api/v1/analyses",
@@ -90,3 +112,4 @@ def test_missing_run_routes_and_list_limits_are_truthful(tmp_path: Path) -> None
         assert client.get("/api/v1/analyses?limit=0").status_code == 422
         assert client.get("/api/v1/analyses?limit=101").status_code == 422
         assert client.get("/api/v1/analyses?limit=1").json() == []
+        assert client.get("/api").status_code == 404

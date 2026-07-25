@@ -19,8 +19,10 @@ from api.models import (
     HealthResponse,
     LanguageCapability,
     RecoveryResponse,
+    RuntimeIdentity,
 )
 from application.analysis_service import AnalysisService
+from infrastructure.db.database import SCHEMA_VERSION
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_ROOT = PROJECT_ROOT / "web"
@@ -99,6 +101,11 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
             version=VERSION_STRING,
             active_analyses=current_service.active_count,
             max_concurrent_analyses=current_service.max_concurrent,
+            runtime=RuntimeIdentity(
+                database_schema_version=SCHEMA_VERSION,
+                build_commit=current_service.settings.build_commit,
+                build_time=current_service.settings.build_time,
+            ),
         )
 
     @app.get("/api/v1/capabilities", response_model=CapabilitiesResponse)
@@ -168,6 +175,12 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
     async def recover_analysis_work(request: Request) -> RecoveryResponse:
         current_service: AnalysisService = request.app.state.analysis_service
         return await current_service.recover()
+
+    @app.get("/{frontend_path:path}", include_in_schema=False)
+    async def frontend_route(frontend_path: str) -> FileResponse:
+        if frontend_path == "api" or frontend_path.startswith(("api/", "assets/")):
+            raise HTTPException(status_code=404, detail="Resource not found")
+        return FileResponse(FRONTEND_ROOT / "index.html")
 
     return app
 

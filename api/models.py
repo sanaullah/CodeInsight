@@ -143,11 +143,25 @@ class AnalysisAccepted(BaseModel):
     status_url: str
 
 
+class RuntimeIdentity(BaseModel):
+    application_server: Literal["FastAPI"] = "FastAPI"
+    environment_manager: Literal["uv"] = "uv"
+    database_engine: Literal["SQLite"] = "SQLite"
+    database_journal_mode: Literal["WAL"] = "WAL"
+    database_schema_version: int = Field(ge=1)
+    artifact_store: Literal["filesystem"] = "filesystem"
+    api_docs_url: str = "/api/docs"
+    read_only_analysis: Literal[True] = True
+    build_commit: str | None = None
+    build_time: str | None = None
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"]
     version: str
     active_analyses: int
     max_concurrent_analyses: int
+    runtime: RuntimeIdentity
 
 
 class LanguageCapability(BaseModel):

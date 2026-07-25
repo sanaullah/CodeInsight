@@ -208,3 +208,10 @@ marimo/_lsp/
 __marimo__/
 
 docs/
+
+# Frontend development caches
+frontend/node_modules/
+frontend/coverage/
+frontend/*.tsbuildinfo
+.npm-cache/
+.test-tmp/

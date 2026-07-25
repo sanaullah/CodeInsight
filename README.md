@@ -38,12 +38,26 @@ Requirements:
 
 - Python 3.12 or 3.13
 - [uv](https://docs.astral.sh/uv/)
+- Node.js 22 or newer for frontend development/builds only
 
 Create the locked environment:
 
 ```bash
 uv sync --dev --locked
 ```
+
+Install and build the browser workspace when frontend sources change:
+
+```bash
+cd frontend
+npm ci
+npm run build
+cd ..
+```
+
+FastAPI serves the resulting production bundle from `web/`; Node is not a
+production server. For frontend-only development, `npm run dev` proxies `/api`
+requests to the FastAPI process on port 8000.
 
 Copy `.env.example` to `.env` if local overrides are needed. To enable a local
 OpenAI-compatible model server, set:
@@ -112,10 +126,12 @@ uv run pytest
 uv run pytest --cov=. --cov-report=term-missing
 uv run ruff check .
 uv lock --check
+cd frontend && npm ci && npm run check && npm run test:coverage && npm run build
 ```
 
-Coverage is branch-aware and must remain at or above the configured 85 percent
-gate. Tests cover database migration/integrity/contention, run and task
+Python coverage is branch-aware and must remain at or above the configured 92
+percent gate. The frontend enforces its own behavioral coverage thresholds.
+Tests cover database migration/integrity/contention, run and task
 recovery, cancellation/idempotency/concurrency, indexing, native analysis,
 provider budgets, optional tracing, public API behavior, and browser contract
 projection.
@@ -134,7 +150,8 @@ projection.
 | `infrastructure/artifacts/` | Content-addressed immutable artifact storage |
 | `infrastructure/llm/` | Provider-neutral model transport adapter |
 | `infrastructure/observability/` | Optional non-blocking Langfuse exporter |
-| `web/` | Browser workspace |
+| `frontend/` | React/TypeScript/Vite source, typed API client, and UI tests |
+| `web/` | FastAPI-served production browser bundle |
 | `tests/` | Behavioral, contract, integration, and performance gates |
 
 ## License

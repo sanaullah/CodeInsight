@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -311,14 +312,15 @@ def test_fastapi_exposes_native_status_intelligence_recovery_and_ui(
         assert recovery.status_code == 200
         assert recovery.json()["scheduled_runs"] == 0
         frontend = client.get("/").text
-        assert "Planned specialists" in frontend
-        assert "Coverage and gaps" in frontend
-        assert 'id="analysis-mode"' in frontend
-        assert 'id="max-waves"' in frontend
-        assert 'id="chunking-strategy"' not in frontend
-        assert 'id="tool-calling"' not in frontend
-        app_script = client.get("/assets/app.js").text
-        assert 'cancelled: "Review cancelled"' in app_script
+        assert 'id="app-root"' in frontend
+        script_path = re.search(r'src="(/assets/[^"]+\.js)"', frontend)
+        assert script_path is not None
+        app_script = client.get(script_path.group(1)).text
+        assert "Review command center" in app_script
+        assert "Coverage and gaps" in app_script
+        assert "Repository writes are unavailable" in app_script
+        assert "chunking-strategy" not in app_script
+        assert "enable_tool_calling" not in app_script
 
         retired = client.post(
             "/api/v1/analyses",

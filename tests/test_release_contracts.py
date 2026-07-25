@@ -67,6 +67,22 @@ def test_environment_uses_openai_compatible_fallbacks_and_blank_url_is_offline(
     assert ApiSettings.from_environment().model_base_url is None
 
 
+def test_environment_normalizes_optional_build_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CODEINSIGHT_BUILD_COMMIT", "  abc123  ")
+    monkeypatch.setenv("CODEINSIGHT_BUILD_TIME", " 2026-07-25T12:00:00Z ")
+    settings = ApiSettings.from_environment()
+    assert settings.build_commit == "abc123"
+    assert settings.build_time == "2026-07-25T12:00:00Z"
+
+    monkeypatch.setenv("CODEINSIGHT_BUILD_COMMIT", " ")
+    monkeypatch.setenv("CODEINSIGHT_BUILD_TIME", "")
+    settings = ApiSettings.from_environment()
+    assert settings.build_commit is None
+    assert settings.build_time is None
+
+
 def test_language_capability_helpers_are_deterministic() -> None:
     assert get_language_for_extension(".PY") == Language.PYTHON
     assert get_language_for_extension(".unknown") is None

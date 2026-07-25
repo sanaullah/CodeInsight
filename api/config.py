@@ -38,6 +38,11 @@ def _optional_url(name: str) -> str | None:
     return value.rstrip("/") if value and value.strip() else None
 
 
+def _optional_text(name: str) -> str | None:
+    value = os.getenv(name)
+    return value.strip() if value and value.strip() else None
+
+
 def _enabled(name: str) -> bool:
     return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
@@ -76,6 +81,8 @@ class ApiSettings:
     langfuse_secret_key: str = ""
     langfuse_host: str = "http://localhost:3000"
     langfuse_capture_content: bool = False
+    build_commit: str | None = None
+    build_time: str | None = None
 
     @classmethod
     def from_environment(cls) -> ApiSettings:
@@ -103,5 +110,7 @@ class ApiSettings:
             langfuse_secret_key=os.getenv("LANGFUSE_SECRET_KEY", ""),
             langfuse_host=os.getenv("LANGFUSE_HOST", "http://localhost:3000"),
             langfuse_capture_content=_enabled("CODEINSIGHT_LANGFUSE_CAPTURE_CONTENT"),
+            build_commit=_optional_text("CODEINSIGHT_BUILD_COMMIT"),
+            build_time=_optional_text("CODEINSIGHT_BUILD_TIME"),
         )
 
