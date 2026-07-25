@@ -942,7 +942,7 @@ fieldset {
 .stat-card {
   display: flex;
   min-height: 115px;
-  align-items: flex-start;
+  align-items: center;
   gap: 13px;
   padding: 17px;
   background: var(--surface);
@@ -961,6 +961,12 @@ fieldset {
   border-radius: 9px;
 }
 
+.stat-icon > svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+}
+
 .tone-amber {
   color: var(--warning);
   background: var(--warning-soft);
@@ -976,9 +982,9 @@ fieldset {
   background: var(--blue-soft);
 }
 
-.stat-card span,
-.stat-card strong,
-.stat-card small {
+.stat-card > div > span,
+.stat-card > div > strong,
+.stat-card > div > small {
   display: block;
 }
 
