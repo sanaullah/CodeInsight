@@ -2180,6 +2180,19 @@ fieldset {
   gap: 3px;
 }
 
+.confirmation-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0 0 14px;
+  padding: 12px 14px;
+  color: var(--warning);
+  background: var(--warning-soft);
+  border: 1px solid currentColor;
+  border-radius: var(--radius-sm);
+}
+
 @media (max-width: 1180px) {
   .stat-grid {
     grid-template-columns: repeat(2, 1fr);
@@ -2424,6 +2437,11 @@ fieldset {
   }
 
   .preset-list li {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .confirmation-bar {
     align-items: stretch;
     flex-direction: column;
   }

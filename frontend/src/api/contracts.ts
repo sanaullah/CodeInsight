@@ -9,6 +9,7 @@ export type AnalysisStatus =
 export type AnalysisMode = "quick" | "deep" | "security" | "change-set";
 
 export interface RuntimeIdentity {
+  api_contract_version: number;
   application_server: "FastAPI";
   environment_manager: "uv";
   database_engine: "SQLite";

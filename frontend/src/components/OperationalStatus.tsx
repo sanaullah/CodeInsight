@@ -7,12 +7,22 @@ export function OperationalStatus({ state }: { state: OperationalState }) {
   const buildLabel = health?.runtime.build_commit
     ? health.runtime.build_commit.slice(0, 10)
     : "local build";
+  const contractCompatible =
+    !health || health.runtime.api_contract_version === SUPPORTED_API_CONTRACT;
 
   return (
     <div className="operational-status">
       <div className="status-summary" aria-live="polite">
         <span className={`status-dot ${online ? "online" : loading ? "loading" : "offline"}`} />
-        <span>{online ? "API ready" : loading ? "Connecting" : "API unavailable"}</span>
+        <span>
+          {online
+            ? contractCompatible
+              ? "API ready"
+              : "API update required"
+            : loading
+              ? "Connecting"
+              : "API unavailable"}
+        </span>
         {health ? <span className="status-version">{health.version}</span> : null}
       </div>
       <details className="diagnostics">
@@ -34,6 +44,13 @@ export function OperationalStatus({ state }: { state: OperationalState }) {
           {error ? (
             <p className="diagnostic-error" role="alert">
               {error}
+            </p>
+          ) : null}
+          {!contractCompatible ? (
+            <p className="diagnostic-error" role="alert">
+              This frontend supports API contract {SUPPORTED_API_CONTRACT}; the local service
+              reports contract {health?.runtime.api_contract_version}. Rebuild the frontend and
+              restart FastAPI from the same checkout.
             </p>
           ) : null}
           <dl className="service-list">
@@ -85,6 +102,8 @@ export function OperationalStatus({ state }: { state: OperationalState }) {
     </div>
   );
 }
+
+const SUPPORTED_API_CONTRACT = 1;
 
 function Service({
   icon,

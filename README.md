@@ -28,6 +28,10 @@ content-addressed files for large immutable source artifacts.
 - Optional best-effort Langfuse trace export behind the internal event
   interface. It is asynchronous, redacted by default, and never required for
   local analysis or run success.
+- A responsive React workspace for submitting and recovering reviews,
+  inspecting live roles/waves/tasks, reviewing evidence-backed findings,
+  tracing bounded repository architecture, comparing history/trends, and
+  managing durable non-secret defaults and path-free presets.
 
 LangGraph, LangChain, LiteLLM, Redis, PostgreSQL, ClickHouse, MinIO, and Docker
 are not application runtime requirements.
@@ -115,9 +119,24 @@ explicitly set; key, token, secret, and password fields remain redacted.
 - `POST /api/v1/recovery` recovers expired work and schedules queued runs.
 - `GET /api/v1/capabilities` reports language support, modes, provider state,
   and optional tracing state.
+- `GET /api/v1/findings`, `/api/v1/snapshots`, and `/api/v1/history` expose
+  bounded, cursor-ready review intelligence projections.
+- `GET/PUT /api/v1/settings` and `/api/v1/presets` manage versioned,
+  non-secret local defaults; provider credentials remain environment-only.
 
 The browser workspace uses these same public endpoints; it has no hidden
 in-process analysis path.
+
+## Browser accessibility and performance
+
+The browser workspace targets WCAG 2.2 AA. It provides keyboard-operable
+navigation and dialogs, semantic tables and text alternatives for charts and
+graphs, visible focus, reduced-motion and forced-colors support, responsive
+layouts from 360px upward, and text-backed status/severity cues.
+
+Production assets are served directly by FastAPI. The release suite enforces
+gzip ceilings of 100 KiB for JavaScript and 20 KiB for CSS, cursor-paginates
+large finding/history projections, and bounds architecture graph responses.
 
 ## Quality gates
 

@@ -81,7 +81,7 @@ describe("findings workspace", () => {
     const user = userEvent.setup();
     render(<FindingsPage />);
 
-    expect(await screen.findByText("More verified findings are available.")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Load more findings" })).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "High1" }));
     await user.selectOptions(screen.getByLabelText("Review state"), "new");
     await waitFor(() => {
@@ -97,6 +97,7 @@ describe("findings workspace", () => {
     await screen.findByText(summary.title);
     await user.click(screen.getByLabelText(`Select ${summary.title}`));
     await user.click(screen.getByRole("button", { name: "Mark selected reviewed (1)" }));
+    await user.click(screen.getByRole("button", { name: "Confirm bulk review" }));
 
     await waitFor(() =>
       expect(apiClient.updateFinding).toHaveBeenCalledWith("finding-1", {
@@ -149,5 +150,20 @@ describe("findings workspace", () => {
     await user.click(await screen.findByRole("button", { name: /Authorization is bypassed/ }));
     await user.click(await screen.findByRole("button", { name: "Reviewed" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Refresh and retry");
+  });
+
+  it("preserves the current page when cursor loading fails", async () => {
+    vi.mocked(apiClient.findings)
+      .mockResolvedValueOnce({
+        items: [summary],
+        next_cursor: "next",
+        counts_by_severity: { high: 1 },
+      })
+      .mockRejectedValueOnce(new Error("Next page unavailable"));
+    const user = userEvent.setup();
+    render(<FindingsPage />);
+    await user.click(await screen.findByRole("button", { name: "Load more findings" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Next page unavailable");
+    expect(screen.getByText(summary.title)).toBeInTheDocument();
   });
 });

@@ -144,6 +144,7 @@ class AnalysisAccepted(BaseModel):
 
 
 class RuntimeIdentity(BaseModel):
+    api_contract_version: Literal[1] = 1
     application_server: Literal["FastAPI"] = "FastAPI"
     environment_manager: Literal["uv"] = "uv"
     database_engine: Literal["SQLite"] = "SQLite"

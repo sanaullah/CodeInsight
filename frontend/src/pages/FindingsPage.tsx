@@ -37,19 +37,18 @@ export function FindingsPage() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [cursor, setCursor] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkConfirming, setBulkConfirming] = useState(false);
+  const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [detail, setDetail] = useState<FindingDetail | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: revision is an explicit retry/reload nonce.
   useEffect(() => {
     const controller = new AbortController();
-    const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    if (severity) params.set("severity", severity);
-    if (reviewState) params.set("review_state", reviewState);
-    params.set("limit", "50");
+    const params = findingParams(search, severity, reviewState);
     window.history.replaceState({}, "", `/findings${params.size ? `?${params}` : ""}`);
     setLoading(true);
     apiClient
@@ -75,6 +74,23 @@ export function FindingsPage() {
       setError(null);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to load finding");
+    }
+  }
+
+  async function loadMore() {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const params = findingParams(search, severity, reviewState);
+      params.set("cursor", cursor);
+      const page = await apiClient.findings(params);
+      setItems((current) => [...current, ...page.items]);
+      setCursor(page.next_cursor);
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to load more findings");
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -108,13 +124,22 @@ export function FindingsPage() {
     <>
       <PageHeader
         actions={
-          <a
-            className="button button-secondary"
-            download
-            href="/api/v1/findings-export?format=json"
-          >
-            Export JSON
-          </a>
+          <div className="button-row">
+            <a
+              className="button button-secondary"
+              download
+              href="/api/v1/findings-export?format=json"
+            >
+              Export JSON
+            </a>
+            <a
+              className="button button-secondary"
+              download
+              href="/api/v1/findings-export?format=csv"
+            >
+              Export CSV
+            </a>
+          </div>
         }
         description="Search verified findings, inspect immutable evidence, and record local review decisions."
         eyebrow="Evidence lifecycle"
@@ -166,12 +191,32 @@ export function FindingsPage() {
           <button
             className="button button-secondary"
             disabled={!selected.size}
-            onClick={bulkReview}
+            onClick={() => setBulkConfirming(true)}
             type="button"
           >
             Mark selected reviewed ({selected.size})
           </button>
         </form>
+        {bulkConfirming ? (
+          <div className="confirmation-bar" role="alert">
+            <span>Mark {selected.size} selected finding(s) as reviewed?</span>
+            <div className="button-row">
+              <button
+                className="button button-primary"
+                onClick={() => {
+                  setBulkConfirming(false);
+                  void bulkReview();
+                }}
+                type="button"
+              >
+                Confirm bulk review
+              </button>
+              <button className="button" onClick={() => setBulkConfirming(false)} type="button">
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
         {loading ? (
           <output className="loading-state">Loading verified findings…</output>
         ) : items.length ? (
@@ -229,7 +274,16 @@ export function FindingsPage() {
               </tbody>
             </table>
             {cursor ? (
-              <p className="pagination-note">More verified findings are available.</p>
+              <div className="pagination-note">
+                <button
+                  className="button button-secondary"
+                  disabled={loadingMore}
+                  onClick={loadMore}
+                  type="button"
+                >
+                  {loadingMore ? "Loading more…" : "Load more findings"}
+                </button>
+              </div>
             ) : null}
           </div>
         ) : (
@@ -315,13 +369,30 @@ export function FindingsPage() {
                     Integrity: {evidence.integrity} · snapshot hash {shortId(evidence.content_hash)}
                   </span>
                   {evidence.excerpt ? (
-                    <pre>{evidence.excerpt}</pre>
+                    <>
+                      <pre>{evidence.excerpt}</pre>
+                      <button
+                        className="text-button"
+                        onClick={async () => {
+                          try {
+                            await navigator.clipboard.writeText(evidence.excerpt ?? "");
+                            setCopyStatus(`Copied evidence from ${evidence.relative_path}.`);
+                          } catch {
+                            setCopyStatus("Clipboard access is unavailable.");
+                          }
+                        }}
+                        type="button"
+                      >
+                        Copy verified excerpt
+                      </button>
+                    </>
                   ) : (
                     <p>Source excerpt is unavailable or failed integrity validation.</p>
                   )}
                 </article>
               ))}
             </section>
+            {copyStatus ? <p aria-live="polite">{copyStatus}</p> : null}
             <section>
               <h3>Specialist consensus</h3>
               {detail.candidates.map((record) => (
@@ -337,4 +408,13 @@ export function FindingsPage() {
       ) : null}
     </>
   );
+}
+
+function findingParams(search: string, severity: string, reviewState: string) {
+  const params = new URLSearchParams();
+  if (search) params.set("search", search);
+  if (severity) params.set("severity", severity);
+  if (reviewState) params.set("review_state", reviewState);
+  params.set("limit", "50");
+  return params;
 }

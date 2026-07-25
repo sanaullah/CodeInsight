@@ -11,6 +11,7 @@ export const healthFixture: HealthResponse = {
   active_analyses: 1,
   max_concurrent_analyses: 2,
   runtime: {
+    api_contract_version: 1,
     application_server: "FastAPI",
     environment_manager: "uv",
     database_engine: "SQLite",

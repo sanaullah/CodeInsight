@@ -11,6 +11,7 @@ export function OverviewPage({ operational }: { operational: OperationalState })
   const [runs, setRuns] = useState<AnalysisRun[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
+  const [recoveryStatus, setRecoveryStatus] = useState<string | null>(null);
 
   useEffect(() => {
     void revision;
@@ -36,6 +37,19 @@ export function OverviewPage({ operational }: { operational: OperationalState })
     },
     {},
   );
+
+  async function recover() {
+    setRecoveryStatus("Checking durable work…");
+    try {
+      const result = await apiClient.recover();
+      setRecoveryStatus(
+        `Recovered ${result.recovered_runs} run(s) and ${result.recovered_tasks} task(s); scheduled ${result.scheduled_runs}.`,
+      );
+      setRevision((value) => value + 1);
+    } catch (reason) {
+      setRecoveryStatus(reason instanceof Error ? reason.message : "Recovery request failed");
+    }
+  }
 
   return (
     <div className="page">
@@ -112,7 +126,11 @@ export function OverviewPage({ operational }: { operational: OperationalState })
           >
             Refresh
           </button>
+          <button className="button button-secondary" onClick={recover} type="button">
+            Recover interrupted work
+          </button>
         </div>
+        {recoveryStatus ? <p aria-live="polite">{recoveryStatus}</p> : null}
         {error ? (
           <ErrorNotice message={error} retry={() => setRevision((value) => value + 1)} />
         ) : null}

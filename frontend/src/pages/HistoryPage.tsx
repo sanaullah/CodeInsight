@@ -24,6 +24,8 @@ export function HistoryPage() {
   const [status, setStatus] = useState(initial.get("status") ?? "");
   const [mode, setMode] = useState(initial.get("mode") ?? "");
   const [runs, setRuns] = useState<HistoryRun[]>([]);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [trends, setTrends] = useState<HistoryTrends | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [comparison, setComparison] = useState<RunComparison | null>(null);
@@ -31,10 +33,7 @@ export function HistoryPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    const params = new URLSearchParams({ limit: "50" });
-    if (search) params.set("search", search);
-    if (status) params.set("status", status);
-    if (mode) params.set("mode", mode);
+    const params = historyParams(search, status, mode);
     window.history.replaceState({}, "", `/history?${params}`);
     Promise.all([
       apiClient.history(params, controller.signal),
@@ -42,6 +41,7 @@ export function HistoryPage() {
     ])
       .then(([page, trendData]) => {
         setRuns(page.items);
+        setCursor(page.next_cursor);
         setTrends(trendData);
         setError(null);
       })
@@ -57,6 +57,23 @@ export function HistoryPage() {
       setComparison(await apiClient.compareRuns(selected[0], selected[1]));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Unable to compare reviews");
+    }
+  }
+
+  async function loadMore() {
+    if (!cursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const params = historyParams(search, status, mode);
+      params.set("cursor", cursor);
+      const page = await apiClient.history(params);
+      setRuns((current) => [...current, ...page.items]);
+      setCursor(page.next_cursor);
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Unable to load more review history");
+    } finally {
+      setLoadingMore(false);
     }
   }
 
@@ -209,6 +226,18 @@ export function HistoryPage() {
                   ))}
                 </tbody>
               </table>
+              {cursor ? (
+                <div className="pagination-note">
+                  <button
+                    className="button button-secondary"
+                    disabled={loadingMore}
+                    onClick={loadMore}
+                    type="button"
+                  >
+                    {loadingMore ? "Loading more…" : "Load more reviews"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           ) : (
             <EmptyState
@@ -268,4 +297,12 @@ export function HistoryPage() {
       ) : null}
     </>
   );
+}
+
+function historyParams(search: string, status: string, mode: string) {
+  const params = new URLSearchParams({ limit: "50" });
+  if (search) params.set("search", search);
+  if (status) params.set("status", status);
+  if (mode) params.set("mode", mode);
+  return params;
 }

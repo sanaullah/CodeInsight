@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import sys
 from pathlib import Path
 
@@ -109,3 +110,21 @@ def test_database_initializer_cli_uses_canonical_schema_source(
     assert init_database.main() == 0
     assert database_path.is_file()
     assert f"schema {SCHEMA_VERSION}" in capsys.readouterr().out
+
+
+def test_production_frontend_assets_stay_within_release_budgets() -> None:
+    web_root = Path(__file__).resolve().parents[1] / "web"
+    javascript = list((web_root / "assets").glob("*.js"))
+    stylesheets = list((web_root / "assets").glob("*.css"))
+
+    assert len(javascript) == 1
+    assert len(stylesheets) == 1
+    assert len(gzip.compress(javascript[0].read_bytes())) < 100 * 1024
+    assert len(gzip.compress(stylesheets[0].read_bytes())) < 20 * 1024
+    assert not list((web_root / "assets").glob("*.map"))
+    css = stylesheets[0].read_text(encoding="utf-8")
+    index = (web_root / "index.html").read_text(encoding="utf-8")
+    assert "@media (prefers-reduced-motion:reduce)" in css
+    assert "@media (forced-colors:active)" in css
+    assert "http://" not in index
+    assert "https://" not in index

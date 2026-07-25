@@ -17,6 +17,11 @@ beforeEach(() => {
   vi.spyOn(apiClient, "health").mockResolvedValue(healthFixture);
   vi.spyOn(apiClient, "capabilities").mockResolvedValue(capabilitiesFixture);
   vi.spyOn(apiClient, "listRuns").mockResolvedValue([]);
+  vi.spyOn(apiClient, "recover").mockResolvedValue({
+    recovered_runs: 0,
+    recovered_tasks: 0,
+    scheduled_runs: 0,
+  });
   vi.spyOn(apiClient, "getRun").mockResolvedValue(runningRunFixture);
   vi.spyOn(apiClient, "getIntelligence").mockResolvedValue(runningIntelligenceFixture);
   vi.spyOn(apiClient, "findings").mockResolvedValue({
@@ -77,6 +82,29 @@ describe("application shell", () => {
     await waitFor(() => expect(screen.getByText("API ready")).toBeInTheDocument());
     expect(screen.getByText("v0.1.0-alpha")).toBeInTheDocument();
     expect(screen.queryByText(/checkout branch/i)).not.toBeInTheDocument();
+  });
+
+  it("invokes durable recovery and reports exact ledger outcomes", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.recover).mockResolvedValue({
+      recovered_runs: 1,
+      recovered_tasks: 3,
+      scheduled_runs: 1,
+    });
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Recover interrupted work" }));
+    expect(
+      await screen.findByText("Recovered 1 run(s) and 3 task(s); scheduled 1."),
+    ).toBeInTheDocument();
+  });
+
+  it("reports durable recovery failures without hiding recent reviews", async () => {
+    const user = userEvent.setup();
+    vi.mocked(apiClient.recover).mockRejectedValue(new Error("Recovery is busy"));
+    render(<App />);
+    await user.click(screen.getByRole("button", { name: "Recover interrupted work" }));
+    expect(await screen.findByText("Recovery is busy")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Recent reviews" })).toBeInTheDocument();
   });
 
   it("navigates client-side and submits only supported review fields", async () => {
@@ -169,6 +197,39 @@ describe("application shell", () => {
       (violation) => violation.impact === "serious" || violation.impact === "critical",
     );
     expect(blocking).toEqual([]);
+  });
+
+  it.each([
+    ["/new-review", "Start a new review"],
+    ["/findings", "Findings"],
+    ["/architecture", "Architecture explorer"],
+    ["/history", "Review history"],
+    ["/settings", "Settings"],
+  ])("has no serious or critical axe violations on %s", async (path, heading) => {
+    window.history.replaceState({}, "", path);
+    const view = render(<App />);
+    await screen.findByRole("heading", { name: heading });
+    const result = await axe.run(view.container, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    expect(
+      result.violations.filter(
+        (violation) => violation.impact === "serious" || violation.impact === "critical",
+      ),
+    ).toEqual([]);
+    view.unmount();
+  });
+
+  it("explains an API contract mismatch without hiding runtime diagnostics", async () => {
+    vi.mocked(apiClient.health).mockResolvedValue({
+      ...healthFixture,
+      runtime: { ...healthFixture.runtime, api_contract_version: 2 },
+    });
+    const user = userEvent.setup();
+    render(<App />);
+    expect(await screen.findByText("API update required")).toBeInTheDocument();
+    await user.click(screen.getByText("Runtime details"));
+    expect(screen.getByRole("alert")).toHaveTextContent("This frontend supports API contract 1");
   });
 
   it("provides an accessible mobile menu escape path", async () => {
@@ -276,10 +337,13 @@ describe("application shell", () => {
       total_tokens: 150,
       cost_usd: 0.01,
     }));
-    vi.mocked(apiClient.history).mockResolvedValue({
-      items: historyRuns,
-      next_cursor: null,
-    });
+    vi.mocked(apiClient.history)
+      .mockResolvedValue({ items: historyRuns, next_cursor: null })
+      .mockResolvedValueOnce({ items: historyRuns, next_cursor: "history-cursor" })
+      .mockResolvedValueOnce({
+        items: [{ ...historyRuns[0], run_id: "run-003", display_name: "Next page" }],
+        next_cursor: null,
+      });
     vi.mocked(apiClient.historyTrends).mockResolvedValue({
       days: 30,
       partial: false,
@@ -305,6 +369,8 @@ describe("application shell", () => {
 
     render(<App />);
     expect(await screen.findByText("30-day measured trend")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Load more reviews" }));
+    expect(await screen.findByText("Next page")).toBeInTheDocument();
     await user.click(screen.getByLabelText("Compare run-001"));
     await user.click(screen.getByLabelText("Compare run-002"));
     await user.click(screen.getByRole("button", { name: "Compare selected (2/2)" }));
@@ -422,11 +488,23 @@ describe("application shell", () => {
       review_version: 0,
       reviewed_at: null,
     };
-    const findings = vi.mocked(apiClient.findings).mockResolvedValue({
-      items: [finding],
-      next_cursor: null,
-      counts_by_severity: { high: 1 },
-    });
+    const findings = vi
+      .mocked(apiClient.findings)
+      .mockResolvedValue({
+        items: [finding],
+        next_cursor: null,
+        counts_by_severity: { high: 1 },
+      })
+      .mockResolvedValueOnce({
+        items: [finding],
+        next_cursor: "finding-cursor",
+        counts_by_severity: { high: 2 },
+      })
+      .mockResolvedValueOnce({
+        items: [{ ...finding, finding_id: "finding-2", title: "Second page finding" }],
+        next_cursor: null,
+        counts_by_severity: { high: 2 },
+      });
     vi.mocked(apiClient.finding).mockResolvedValue({
       ...finding,
       candidates: [
@@ -485,6 +563,12 @@ describe("application shell", () => {
 
     render(<App />);
     expect(await screen.findByText(finding.title)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Load more findings" }));
+    expect(await screen.findByText("Second page finding")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Export CSV" })).toHaveAttribute(
+      "href",
+      "/api/v1/findings-export?format=csv",
+    );
     await user.type(screen.getByLabelText("Search"), "authorization");
     await waitFor(() =>
       expect(findings).toHaveBeenLastCalledWith(
@@ -495,6 +579,10 @@ describe("application shell", () => {
     expect(window.location.search).toContain("search=authorization");
     await user.click(screen.getByRole("button", { name: /Authorization check is bypassed/ }));
     expect(await screen.findByText("return allow")).toBeInTheDocument();
+    const clipboard = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
+    await user.click(screen.getByRole("button", { name: "Copy verified excerpt" }));
+    expect(clipboard).toHaveBeenCalledWith("return allow");
+    expect(screen.getByText("Copied evidence from src/auth.py.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Reviewed" }));
     await waitFor(() =>
       expect(apiClient.updateFinding).toHaveBeenCalledWith("finding-1", {
@@ -502,6 +590,10 @@ describe("application shell", () => {
         expected_version: 0,
       }),
     );
+    await user.click(screen.getByLabelText(`Select ${finding.title}`));
+    await user.click(screen.getByRole("button", { name: "Mark selected reviewed (1)" }));
+    expect(screen.getByText("Mark 1 selected finding(s) as reviewed?")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Confirm bulk review" }));
   });
 
   it("renders accepted findings, measured gaps, and synthesis from durable data", async () => {

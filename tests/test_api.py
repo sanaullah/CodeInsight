@@ -36,6 +36,7 @@ def test_health_frontend_and_analysis_lifecycle(tmp_path: Path) -> None:
         health_body = health.json()
         assert health_body["max_concurrent_analyses"] == 1
         assert health_body["runtime"] == {
+            "api_contract_version": 1,
             "application_server": "FastAPI",
             "environment_manager": "uv",
             "database_engine": "SQLite",
