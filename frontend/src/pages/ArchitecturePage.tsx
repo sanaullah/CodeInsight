@@ -518,6 +518,9 @@ export function ArchitecturePage() {
         }
         finding={finding}
         loading={findingLoading}
+        openEvidenceHref={
+          finding ? `/findings?finding=${encodeURIComponent(finding.finding_id)}` : undefined
+        }
         onClose={() => {
           setFinding(null);
           setFindingError(null);

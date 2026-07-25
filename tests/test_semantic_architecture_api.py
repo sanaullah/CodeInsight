@@ -88,9 +88,98 @@ def test_semantic_architecture_api_is_bounded_and_traceable(
             },
         )
         assert trace.status_code == 200
-        assert trace.json()["status"] == "complete"
-        assert trace.json()["relations"][0]["relation_kind"] == "data_access"
-        assert isinstance(trace.json()["relations"][0]["is_async"], bool)
+        trace_body = trace.json()
+        assert trace_body["status"] == "complete"
+        assert trace_body["relations"][0]["relation_kind"] == "data_access"
+        assert isinstance(trace_body["relations"][0]["is_async"], bool)
+        assert trace_body["endpoints"][0]["route"] == "/orders"
+        assert any(item["resource_kind"] == "database" for item in trace_body["resources"])
+        assert trace_body["provenance"]
+        assert not trace_body["evidence_truncated"]
+
+
+def test_semantic_trace_bounds_evidence_details(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path))
+    database_path, snapshot_id = _semantic_snapshot(tmp_path)
+    with database_connection(database_path) as connection:
+        service_id = connection.execute(
+            """
+            SELECT component_id FROM semantic_components
+            WHERE snapshot_id = ? AND component_kind = 'service'
+            """,
+            (snapshot_id,),
+        ).fetchone()[0]
+        file_id = connection.execute(
+            "SELECT file_id FROM files WHERE snapshot_id = ? LIMIT 1",
+            (snapshot_id,),
+        ).fetchone()[0]
+        connection.executemany(
+            """
+            INSERT INTO semantic_memberships(
+                membership_id, snapshot_id, component_id, file_id,
+                symbol_id, membership_kind, confidence, provenance_json
+            ) VALUES (?, ?, ?, ?, NULL, 'implementation', 1.0, '{}')
+            """,
+            [
+                (
+                    f"bounded-membership-{index:03d}",
+                    snapshot_id,
+                    service_id,
+                    file_id,
+                )
+                for index in range(251)
+            ],
+        )
+        connection.executemany(
+            """
+            INSERT INTO semantic_endpoints(
+                endpoint_id, snapshot_id, stable_key, component_id, route,
+                method, protocol, direction, support_tier, completeness,
+                confidence, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, 'GET', 'http', 'inbound',
+                      'exact', 'complete', 1.0, '{}')
+            """,
+            [
+                (
+                    f"bounded-endpoint-{index:03d}",
+                    snapshot_id,
+                    f"endpoint:bounded-{index:03d}",
+                    service_id,
+                    f"/bounded/{index}",
+                )
+                for index in range(501)
+            ],
+        )
+        store_id = connection.execute(
+            """
+            SELECT component_id FROM semantic_components
+            WHERE snapshot_id = ? AND component_kind = 'datastore'
+            """,
+            (snapshot_id,),
+        ).fetchone()[0]
+    app = create_app(AnalysisService(database_path=database_path))
+
+    started = perf_counter()
+    with TestClient(app) as client:
+        detail = client.get(
+            f"/api/v1/snapshots/{snapshot_id}/semantic-components/{service_id}"
+        )
+        response = client.get(
+            f"/api/v1/snapshots/{snapshot_id}/semantic-trace",
+            params={"source_id": service_id, "target_id": store_id},
+        )
+    elapsed = perf_counter() - started
+
+    assert detail.status_code == 200
+    assert len(detail.json()["memberships"]) == 250
+    assert detail.json()["evidence_truncated"]
+    assert detail.json()["limits"]["detail_row_limit"] == 250
+    assert response.status_code == 200
+    assert len(response.json()["endpoints"]) == 500
+    assert response.json()["evidence_truncated"]
+    assert elapsed < 3
 
 
 def test_semantic_architecture_api_reports_missing_and_rejects_unbounded_limits(

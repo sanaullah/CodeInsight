@@ -10,6 +10,9 @@ from typing import Any
 from .database import database_connection
 from .run_ledger import SqliteRunLedger
 
+COMPONENT_DETAIL_LIMIT = 250
+GRAPH_FINDING_LIMIT = 500
+
 
 def _record(row) -> dict[str, Any]:
     ignored = {"metadata_json", "provenance_json", "file_metadata"}
@@ -138,7 +141,12 @@ class SqliteSemanticArchitectureQuery:
                     "relations": [],
                     "findings": [],
                     "truncated": False,
-                    "limits": {"depth": depth, "node_limit": limit},
+                    "findings_truncated": False,
+                    "limits": {
+                        "depth": depth,
+                        "node_limit": limit,
+                        "finding_limit": GRAPH_FINDING_LIMIT,
+                    },
                 }
             placeholders = ",".join("?" for _ in selected)
             kind_clause = ""
@@ -189,7 +197,11 @@ class SqliteSemanticArchitectureQuery:
                     )
                 ]
                 boundaries = self._boundaries(connection, snapshot_id, visible)
-            findings = self._findings(connection, snapshot_id, visible)
+            findings = self._findings(
+                connection, snapshot_id, visible, limit=GRAPH_FINDING_LIMIT + 1
+            )
+            findings_truncated = len(findings) > GRAPH_FINDING_LIMIT
+            findings = findings[:GRAPH_FINDING_LIMIT]
         return {
             **summary,
             "components": components,
@@ -197,7 +209,12 @@ class SqliteSemanticArchitectureQuery:
             "relations": relations,
             "findings": findings,
             "truncated": truncated,
-            "limits": {"depth": depth, "node_limit": limit},
+            "findings_truncated": findings_truncated,
+            "limits": {
+                "depth": depth,
+                "node_limit": limit,
+                "finding_limit": GRAPH_FINDING_LIMIT,
+            },
         }
 
     def component(self, snapshot_id: str, component_id: str) -> dict[str, Any] | None:
@@ -225,16 +242,31 @@ class SqliteSemanticArchitectureQuery:
                     WHERE memberships.snapshot_id = ?
                       AND memberships.component_id = ?
                     ORDER BY files.relative_path
+                    LIMIT ?
                     """,
-                    (snapshot_id, component_id),
+                    (snapshot_id, component_id, COMPONENT_DETAIL_LIMIT + 1),
                 )
             ]
+            memberships_capped = len(memberships) > COMPONENT_DETAIL_LIMIT
+            memberships = memberships[:COMPONENT_DETAIL_LIMIT]
             resources = self._entity_rows(
-                connection, "semantic_resources", snapshot_id, component_id
+                connection,
+                "semantic_resources",
+                snapshot_id,
+                component_id,
+                limit=COMPONENT_DETAIL_LIMIT + 1,
             )
+            resources_capped = len(resources) > COMPONENT_DETAIL_LIMIT
+            resources = resources[:COMPONENT_DETAIL_LIMIT]
             endpoints = self._entity_rows(
-                connection, "semantic_endpoints", snapshot_id, component_id
+                connection,
+                "semantic_endpoints",
+                snapshot_id,
+                component_id,
+                limit=COMPONENT_DETAIL_LIMIT + 1,
             )
+            endpoints_capped = len(endpoints) > COMPONENT_DETAIL_LIMIT
+            endpoints = endpoints[:COMPONENT_DETAIL_LIMIT]
             provenance = [
                 {
                     **_record(item),
@@ -248,11 +280,21 @@ class SqliteSemanticArchitectureQuery:
                     WHERE provenance.snapshot_id = ?
                       AND provenance.entity_id = ?
                     ORDER BY files.relative_path, start_line
+                    LIMIT ?
                     """,
-                    (snapshot_id, component_id),
+                    (snapshot_id, component_id, COMPONENT_DETAIL_LIMIT + 1),
                 )
             ]
-            findings = self._findings(connection, snapshot_id, [component_id])
+            provenance_capped = len(provenance) > COMPONENT_DETAIL_LIMIT
+            provenance = provenance[:COMPONENT_DETAIL_LIMIT]
+            findings = self._findings(
+                connection,
+                snapshot_id,
+                [component_id],
+                limit=COMPONENT_DETAIL_LIMIT + 1,
+            )
+            findings_capped = len(findings) > COMPONENT_DETAIL_LIMIT
+            findings = findings[:COMPONENT_DETAIL_LIMIT]
         return {
             **_record(row),
             "memberships": memberships,
@@ -260,6 +302,16 @@ class SqliteSemanticArchitectureQuery:
             "endpoints": endpoints,
             "provenance": provenance,
             "findings": findings,
+            "evidence_truncated": any(
+                (
+                    memberships_capped,
+                    resources_capped,
+                    endpoints_capped,
+                    provenance_capped,
+                    findings_capped,
+                )
+            ),
+            "limits": {"detail_row_limit": COMPONENT_DETAIL_LIMIT},
         }
 
     def trace(
@@ -280,7 +332,10 @@ class SqliteSemanticArchitectureQuery:
                 "status": "unsupported",
                 "components": [],
                 "relations": [],
+                "endpoints": [],
+                "resources": [],
                 "provenance": [],
+                "evidence_truncated": False,
                 "max_hops": max_hops,
             }
         with database_connection(self.database_path) as connection:
@@ -317,7 +372,10 @@ class SqliteSemanticArchitectureQuery:
                     "status": "truncated" if capped else "no_path",
                     "components": [],
                     "relations": [],
+                    "endpoints": [],
+                    "resources": [],
                     "provenance": [],
+                    "evidence_truncated": False,
                     "max_hops": max_hops,
                 }
             component_ids = [
@@ -335,9 +393,22 @@ class SqliteSemanticArchitectureQuery:
                 )
             ]
             relation_ids = [str(item["relation_id"]) for item in path]
+            endpoints, endpoints_capped = self._trace_entities(
+                connection, "semantic_endpoints", snapshot_id, component_ids
+            )
+            resources, resources_capped = self._trace_entities(
+                connection, "semantic_resources", snapshot_id, component_ids
+            )
+            evidence_ids = [
+                *component_ids,
+                *relation_ids,
+                *[str(item["endpoint_id"]) for item in endpoints],
+                *[str(item["resource_id"]) for item in resources],
+            ]
             provenance = []
-            if relation_ids:
-                relation_placeholders = ",".join("?" for _ in relation_ids)
+            provenance_capped = False
+            if evidence_ids:
+                evidence_placeholders = ",".join("?" for _ in evidence_ids)
                 provenance = [
                     {
                         **_record(row),
@@ -349,20 +420,27 @@ class SqliteSemanticArchitectureQuery:
                         FROM semantic_provenance AS provenance
                         JOIN files USING(file_id)
                         WHERE provenance.snapshot_id = ?
-                          AND provenance.entity_kind = 'relation'
-                          AND provenance.entity_id IN ({relation_placeholders})
+                          AND provenance.entity_id IN ({evidence_placeholders})
                         ORDER BY files.relative_path, start_line
+                        LIMIT 501
                         """,
-                        (snapshot_id, *relation_ids),
+                        (snapshot_id, *evidence_ids),
                     )
                 ]
+                provenance_capped = len(provenance) > 500
+                provenance = provenance[:500]
         component_by_id = {str(item["component_id"]): item for item in components}
         return {
             "snapshot_id": snapshot_id,
             "status": "complete",
             "components": [component_by_id[item] for item in component_ids],
             "relations": [_record(item) for item in path],
+            "endpoints": endpoints,
+            "resources": resources,
             "provenance": provenance,
+            "evidence_truncated": (
+                endpoints_capped or resources_capped or provenance_capped
+            ),
             "max_hops": max_hops,
         }
 
@@ -450,10 +528,20 @@ class SqliteSemanticArchitectureQuery:
         return list(grouped.values())
 
     @staticmethod
-    def _findings(connection, snapshot_id: str, component_ids: list[str]):
+    def _findings(
+        connection,
+        snapshot_id: str,
+        component_ids: list[str],
+        *,
+        limit: int | None = None,
+    ):
         if not component_ids:
             return []
         placeholders = ",".join("?" for _ in component_ids)
+        limit_clause = " LIMIT ?" if limit is not None else ""
+        parameters: tuple[Any, ...] = (snapshot_id, *component_ids)
+        if limit is not None:
+            parameters = (*parameters, limit)
         rows = connection.execute(
             f"""
             SELECT DISTINCT findings.finding_id,
@@ -473,13 +561,25 @@ class SqliteSemanticArchitectureQuery:
               AND json_extract(candidates.contract_json, '$.affected_path')
                     = files.relative_path
             ORDER BY findings.finding_id
+            {limit_clause}
             """,
-            (snapshot_id, *component_ids),
+            parameters,
         )
         return [dict(row) for row in rows]
 
     @staticmethod
-    def _entity_rows(connection, table: str, snapshot_id: str, component_id: str):
+    def _entity_rows(
+        connection,
+        table: str,
+        snapshot_id: str,
+        component_id: str,
+        *,
+        limit: int | None = None,
+    ):
+        limit_clause = " LIMIT ?" if limit is not None else ""
+        parameters: tuple[Any, ...] = (snapshot_id, component_id)
+        if limit is not None:
+            parameters = (*parameters, limit)
         return [
             _record(row)
             for row in connection.execute(
@@ -487,7 +587,32 @@ class SqliteSemanticArchitectureQuery:
                 SELECT * FROM {table}
                 WHERE snapshot_id = ? AND component_id = ?
                 ORDER BY stable_key
+                {limit_clause}
                 """,
-                (snapshot_id, component_id),
+                parameters,
             )
         ]
+
+    @staticmethod
+    def _trace_entities(
+        connection,
+        table: str,
+        snapshot_id: str,
+        component_ids: list[str],
+        limit: int = 500,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        placeholders = ",".join("?" for _ in component_ids)
+        rows = [
+            _record(row)
+            for row in connection.execute(
+                f"""
+                SELECT * FROM {table}
+                WHERE snapshot_id = ?
+                  AND component_id IN ({placeholders})
+                ORDER BY stable_key
+                LIMIT ?
+                """,
+                (snapshot_id, *component_ids, limit + 1),
+            )
+        ]
+        return rows[:limit], len(rows) > limit

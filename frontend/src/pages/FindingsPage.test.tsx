@@ -119,6 +119,16 @@ describe("findings workspace", () => {
     await waitFor(() => expect(apiClient.updateFinding).toHaveBeenCalled());
     await user.click(screen.getAllByRole("button", { name: "Close finding detail" })[0]);
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(window.location.search).not.toContain("finding=");
+  });
+
+  it("opens a durable finding deep link without waiting for list selection", async () => {
+    window.history.replaceState({}, "", "/findings?finding=finding-1");
+    render(<FindingsPage />);
+
+    expect(await screen.findByRole("dialog", { name: "Finding detail" })).toBeInTheDocument();
+    expect(apiClient.finding).toHaveBeenCalledWith("finding-1", expect.any(AbortSignal));
+    expect(window.location.search).toContain("finding=finding-1");
   });
 
   it("surfaces list and detail failures with retry", async () => {

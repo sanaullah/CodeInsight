@@ -126,7 +126,8 @@ const graph: SemanticArchitectureGraph = {
     },
   ],
   truncated: true,
-  limits: { depth: 1, node_limit: 100 },
+  findings_truncated: false,
+  limits: { depth: 1, node_limit: 100, finding_limit: 500 },
 };
 
 const detail: SemanticComponentDetail = {
@@ -179,6 +180,8 @@ const detail: SemanticComponentDetail = {
   ],
   provenance: [],
   findings: graph.findings,
+  evidence_truncated: false,
+  limits: { detail_row_limit: 250 },
 };
 
 const trace: SemanticTrace = {
@@ -186,6 +189,8 @@ const trace: SemanticTrace = {
   status: "complete",
   components: [service, library],
   relations: [graph.relations[1]],
+  endpoints: detail.endpoints,
+  resources: detail.resources,
   provenance: [
     {
       provenance_id: "provenance-1",
@@ -201,6 +206,7 @@ const trace: SemanticTrace = {
       metadata: {},
     },
   ],
+  evidence_truncated: false,
   max_hops: 4,
 };
 
@@ -220,7 +226,24 @@ const finding = {
   review_note: null,
   review_version: 1,
   reviewed_at: null,
-  candidates: [],
+  candidates: [
+    {
+      relationship: "supporting",
+      candidate: {
+        candidate_id: "candidate-1",
+        title: "Unsafe query construction",
+        claim: "The query is assembled from an untrusted value.",
+        category: "security",
+        affected_path: "api/app.py",
+        impact: "Untrusted input can alter the database query.",
+        proposed_severity: "high",
+        proposed_confidence: 0.93,
+        recommendation: "Use a parameterized query.",
+      },
+      role: null,
+      verdict: null,
+    },
+  ],
   evidence: [
     {
       evidence_id: "evidence-1",
@@ -312,6 +335,27 @@ describe("Architecture Explorer feature components", () => {
     ).toBeInTheDocument();
   });
 
+  it("uses the browser fullscreen API only when it is supported", async () => {
+    const requestFullscreen = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(HTMLElement.prototype, "requestFullscreen", {
+      configurable: true,
+      value: requestFullscreen,
+    });
+    try {
+      const user = userEvent.setup();
+      render(
+        <TopologyViewport graph={graph} onSelectComponent={vi.fn()} selectedComponentId={null} />,
+      );
+
+      const button = await screen.findByRole("button", { name: "Enter fullscreen" });
+      expect(button).toBeEnabled();
+      await user.click(button);
+      expect(requestFullscreen).toHaveBeenCalledOnce();
+    } finally {
+      Reflect.deleteProperty(HTMLElement.prototype, "requestFullscreen");
+    }
+  });
+
   it("keeps the text alternative visible and distinguishes static calls from runtime flow", () => {
     render(
       <ArchitectureTextAlternative
@@ -351,6 +395,13 @@ describe("Architecture Explorer feature components", () => {
     expect(onFinding).toHaveBeenCalledWith("finding-1");
   });
 
+  it("makes bounded component evidence explicit in the inspector", () => {
+    render(
+      <ComponentInspector component={service} detail={{ ...detail, evidence_truncated: true }} />,
+    );
+    expect(screen.getByText(/reached the server limit of 250 rows/i)).toBeInTheDocument();
+  });
+
   it("provides an ordered typed trace without mislabeling a static call", () => {
     render(<TraceRail trace={trace} />);
 
@@ -359,7 +410,10 @@ describe("Architecture Explorer feature components", () => {
     expect(steps[1]).toHaveTextContent("Static helpers");
     expect(screen.getByText("static call reference")).toBeInTheDocument();
     expect(screen.getByText("Static relationship, not runtime data flow")).toBeInTheDocument();
-    expect(screen.getByText(/static call.*70%/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/static call.*70%/i)).toHaveLength(2);
+    expect(screen.getByText("Entry point")).toBeInTheDocument();
+    expect(screen.getByText("Resource")).toBeInTheDocument();
+    expect(screen.getByText("Source evidence")).toBeInTheDocument();
   });
 
   it("surfaces unsupported trace state explicitly", () => {
@@ -370,12 +424,20 @@ describe("Architecture Explorer feature components", () => {
           status: "unsupported",
           components: [],
           relations: [],
+          endpoints: [],
+          resources: [],
           provenance: [],
+          evidence_truncated: false,
         }}
       />,
     );
     expect(screen.getByText("Unsupported evidence")).toBeInTheDocument();
     expect(screen.queryByRole("list")).not.toBeInTheDocument();
+  });
+
+  it("makes bounded trace evidence truncation explicit", () => {
+    render(<TraceRail trace={{ ...trace, evidence_truncated: true }} />);
+    expect(screen.getByText(/Evidence details reached the server bound/i)).toBeInTheDocument();
   });
 
   it("renders verified evidence, truthful export, copy, and keyboard close actions", async () => {
@@ -386,6 +448,7 @@ describe("Architecture Explorer feature components", () => {
       <FindingEvidenceDrawer
         exportHref="/api/v1/findings/finding-1/export?format=json"
         finding={finding}
+        openEvidenceHref="/findings?finding=finding-1"
         onClose={onClose}
         onCopyEvidence={onCopy}
       />,
@@ -395,6 +458,12 @@ describe("Architecture Explorer feature components", () => {
       "href",
       "/api/v1/findings/finding-1/export?format=json",
     );
+    expect(screen.getByRole("link", { name: "Open evidence workspace" })).toHaveAttribute(
+      "href",
+      "/findings?finding=finding-1",
+    );
+    expect(screen.getByText("Evidence-derived impact")).toBeInTheDocument();
+    expect(screen.getByText("Untrusted input can alter the database query.")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Copy evidence" }));
     expect(onCopy).toHaveBeenCalledWith("query = f'SELECT {value}'");
     expect(screen.getByText("Evidence excerpt copied.")).toBeInTheDocument();

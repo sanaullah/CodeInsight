@@ -338,6 +338,15 @@
   position: relative;
 }
 
+.architecture-viewport:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  padding: 1rem;
+  background-color: var(--architecture-panel);
+  border: 0;
+  border-radius: 0;
+}
+
 .architecture-boundary-strip,
 .architecture-boundary-alternative ul {
   display: flex;
@@ -690,6 +699,42 @@
   flex-wrap: wrap;
   gap: 0.5rem;
   justify-content: space-between;
+}
+
+.architecture-trace-evidence {
+  margin-top: 1rem;
+}
+
+.architecture-trace-evidence ol {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(13rem, 100%), 1fr));
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.architecture-trace-evidence li {
+  display: grid;
+  gap: 0.25rem;
+  min-width: 0;
+  padding: 0.65rem;
+  background: color-mix(in srgb, var(--architecture-accent) 5%, transparent);
+  border: 1px solid var(--architecture-border);
+  border-radius: 0.55rem;
+  overflow-wrap: anywhere;
+}
+
+.architecture-trace-evidence li span,
+.architecture-trace-evidence li small {
+  color: var(--architecture-muted);
+}
+
+.architecture-trace-evidence li span {
+  font-size: 0.7rem;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .architecture-drawer-scrim {

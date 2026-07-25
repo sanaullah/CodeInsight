@@ -6,6 +6,7 @@ export interface FindingEvidenceDrawerProps {
   loading?: boolean;
   error?: string | null;
   exportHref?: string;
+  openEvidenceHref?: string;
   onClose: () => void;
   onCopyEvidence?: (excerpt: string) => Promise<void> | void;
 }
@@ -15,6 +16,7 @@ export function FindingEvidenceDrawer({
   loading = false,
   error = null,
   exportHref,
+  openEvidenceHref,
   onClose,
   onCopyEvidence,
 }: FindingEvidenceDrawerProps) {
@@ -33,6 +35,15 @@ export function FindingEvidenceDrawer({
   }, [onClose, open]);
 
   if (!open) return null;
+  const impacts = finding
+    ? [
+        ...new Set(
+          finding.candidates
+            .map((record) => record.candidate.impact.trim())
+            .filter((impact) => impact.length > 0),
+        ),
+      ]
+    : [];
 
   async function copyExcerpt(excerpt: string) {
     try {
@@ -92,6 +103,11 @@ export function FindingEvidenceDrawer({
                   Export finding
                 </a>
               ) : null}
+              {openEvidenceHref ? (
+                <a className="architecture-action" href={openEvidenceHref}>
+                  Open evidence workspace
+                </a>
+              ) : null}
             </div>
             <section>
               <h3>Verified claim</h3>
@@ -101,6 +117,14 @@ export function FindingEvidenceDrawer({
               <h3>Recommendation</h3>
               <p>{finding.recommendation}</p>
             </section>
+            {impacts.length ? (
+              <section>
+                <h3>Evidence-derived impact</h3>
+                {impacts.map((impact) => (
+                  <p key={impact}>{impact}</p>
+                ))}
+              </section>
+            ) : null}
             <section>
               <h3>Evidence ({finding.evidence.length})</h3>
               {finding.evidence.length ? (

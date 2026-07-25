@@ -40,6 +40,7 @@ export function FindingsPage() {
   const [bulkConfirming, setBulkConfirming] = useState(false);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [detail, setDetail] = useState<FindingDetail | null>(null);
+  const [detailId, setDetailId] = useState(initial.get("finding") ?? "");
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,7 +50,6 @@ export function FindingsPage() {
   useEffect(() => {
     const controller = new AbortController();
     const params = findingParams(search, severity, reviewState);
-    window.history.replaceState({}, "", `/findings${params.size ? `?${params}` : ""}`);
     setLoading(true);
     apiClient
       .findings(params, controller.signal)
@@ -68,13 +68,38 @@ export function FindingsPage() {
     return () => controller.abort();
   }, [search, severity, reviewState, revision]);
 
-  async function openFinding(findingId: string) {
-    try {
-      setDetail(await apiClient.finding(findingId));
-      setError(null);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Unable to load finding");
+  useEffect(() => {
+    const params = findingParams(search, severity, reviewState);
+    if (detailId) params.set("finding", detailId);
+    window.history.replaceState({}, "", `/findings${params.size ? `?${params}` : ""}`);
+  }, [detailId, reviewState, search, severity]);
+
+  useEffect(() => {
+    if (!detailId) {
+      setDetail(null);
+      return;
     }
+    const controller = new AbortController();
+    apiClient
+      .finding(detailId, controller.signal)
+      .then((value) => {
+        setDetail(value);
+        setError(null);
+      })
+      .catch((reason) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setError(reason instanceof Error ? reason.message : "Unable to load finding");
+      });
+    return () => controller.abort();
+  }, [detailId]);
+
+  function openFinding(findingId: string) {
+    setDetailId(findingId);
+  }
+
+  function closeFinding() {
+    setDetailId("");
+    setDetail(null);
   }
 
   async function loadMore() {
@@ -298,7 +323,7 @@ export function FindingsPage() {
           <button
             aria-label="Close finding detail"
             className="drawer-scrim"
-            onClick={() => setDetail(null)}
+            onClick={closeFinding}
             type="button"
           />
           <aside
@@ -321,7 +346,7 @@ export function FindingsPage() {
               <button
                 aria-label="Close finding detail"
                 className="icon-button"
-                onClick={() => setDetail(null)}
+                onClick={closeFinding}
                 type="button"
               >
                 ×

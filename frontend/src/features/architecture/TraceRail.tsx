@@ -38,6 +38,39 @@ export function TraceRail({
       ),
     [trace?.relations],
   );
+  const evidenceSteps = useMemo(() => {
+    if (!trace) return [];
+    const componentOrder = new Map(
+      trace.components.map((component, index) => [componentId(component), index * 10]),
+    );
+    const relationOrder = new Map(
+      trace.relations.map((relation, index) => [relation.relation_id, index * 10 + 5]),
+    );
+    return [
+      ...trace.endpoints.map((endpoint) => ({
+        id: endpoint.endpoint_id,
+        order: (componentOrder.get(endpoint.component_id ?? "") ?? 10_000) - 1,
+        kind: endpoint.direction === "inbound" ? "Entry point" : "Outbound endpoint",
+        title: `${endpoint.method ?? endpoint.protocol.toUpperCase()} ${endpoint.route}`,
+        detail: `${endpoint.protocol} / ${endpoint.completeness} / ${Math.round(endpoint.confidence * 100)}%`,
+      })),
+      ...trace.provenance.map((record) => ({
+        id: record.provenance_id,
+        order:
+          relationOrder.get(record.entity_id) ?? componentOrder.get(record.entity_id) ?? 10_000,
+        kind: "Source evidence",
+        title: `${record.relative_path ?? "Unknown file"}:${record.start_line}-${record.end_line}`,
+        detail: `${record.derivation.replaceAll("_", " ")} / ${Math.round(record.confidence * 100)}%`,
+      })),
+      ...trace.resources.map((resource) => ({
+        id: resource.resource_id,
+        order: (componentOrder.get(resource.component_id ?? "") ?? 10_000) + 1,
+        kind: "Resource",
+        title: resource.name,
+        detail: `${resource.resource_kind.replaceAll("_", " ")} / ${resource.completeness} / ${Math.round(resource.confidence * 100)}%`,
+      })),
+    ].sort((left, right) => left.order - right.order || left.id.localeCompare(right.id));
+  }, [trace]);
 
   return (
     <section aria-labelledby="architecture-trace-heading" className="architecture-trace-rail">
@@ -113,6 +146,26 @@ export function TraceRail({
             ))}
           </ul>
         </details>
+      ) : null}
+      {evidenceSteps.length ? (
+        <section className="architecture-trace-evidence">
+          <h3>Ordered repository evidence ({evidenceSteps.length})</h3>
+          <ol>
+            {evidenceSteps.map((step) => (
+              <li key={step.id}>
+                <span>{step.kind}</span>
+                <strong>{step.title}</strong>
+                <small>{step.detail}</small>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ) : null}
+      {trace?.evidence_truncated ? (
+        <p className="architecture-inline-error">
+          Evidence details reached the server bound; focus the graph to inspect a smaller
+          neighborhood.
+        </p>
       ) : null}
       {trace && trace.status === "complete" && trace.components.length > 0 ? (
         <p className="architecture-visually-hidden">

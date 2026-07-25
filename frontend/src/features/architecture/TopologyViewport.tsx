@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { SemanticArchitectureGraph, SemanticComponent } from "../../api/contracts";
 import {
   componentId,
@@ -32,6 +32,19 @@ export function TopologyViewport({
 }: TopologyViewportProps) {
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [fullscreen, setFullscreen] = useState(false);
+  const [fullscreenSupported, setFullscreenSupported] = useState(false);
+  const [fullscreenError, setFullscreenError] = useState("");
+  const viewport = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setFullscreenSupported(Boolean(viewport.current?.requestFullscreen));
+    function onFullscreenChange() {
+      setFullscreen(document.fullscreenElement === viewport.current);
+    }
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
 
   const visibleComponents = useMemo(
     () =>
@@ -77,6 +90,16 @@ export function TopologyViewport({
     );
   }
 
+  async function toggleFullscreen() {
+    setFullscreenError("");
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await viewport.current?.requestFullscreen();
+    } catch {
+      setFullscreenError("Fullscreen view is unavailable in this browser.");
+    }
+  }
+
   return (
     <section aria-labelledby="semantic-topology-heading" className="architecture-topology">
       <div className="architecture-section-heading">
@@ -114,8 +137,20 @@ export function TopologyViewport({
           >
             Reset
           </button>
+          <button
+            disabled={!fullscreenSupported}
+            onClick={() => void toggleFullscreen()}
+            type="button"
+          >
+            {fullscreen ? "Exit fullscreen" : "Enter fullscreen"}
+          </button>
         </fieldset>
       </div>
+      {fullscreenError ? (
+        <p className="architecture-inline-error" role="alert">
+          {fullscreenError}
+        </p>
+      ) : null}
       <ProjectionNotice status={projectionStatus(graph)} />
       {graph.boundaries.length ? (
         <ul aria-label="Visible architecture boundaries" className="architecture-boundary-strip">
@@ -134,6 +169,7 @@ export function TopologyViewport({
         aria-describedby="topology-instructions"
         className="architecture-viewport"
         data-testid="topology-viewport"
+        ref={viewport}
       >
         <p className="architecture-visually-hidden" id="topology-instructions">
           The diagram is supplementary. Use the always-visible text alternative for a complete

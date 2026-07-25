@@ -483,7 +483,8 @@ export interface SemanticArchitectureGraph extends SemanticSummary {
   relations: SemanticRelation[];
   findings: SemanticFindingLink[];
   truncated: boolean;
-  limits: { depth: number; node_limit: number };
+  findings_truncated: boolean;
+  limits: { depth: number; node_limit: number; finding_limit: number };
 }
 
 export interface SemanticComponentDetail extends SemanticComponent {
@@ -492,6 +493,8 @@ export interface SemanticComponentDetail extends SemanticComponent {
   endpoints: SemanticEndpoint[];
   provenance: SemanticProvenance[];
   findings: SemanticFindingLink[];
+  evidence_truncated: boolean;
+  limits: { detail_row_limit: number };
 }
 
 export interface SemanticTrace {
@@ -499,7 +502,10 @@ export interface SemanticTrace {
   status: "complete" | "no_path" | "truncated" | "unsupported";
   components: SemanticComponent[];
   relations: SemanticRelation[];
+  endpoints: SemanticEndpoint[];
+  resources: SemanticResource[];
   provenance: SemanticProvenance[];
+  evidence_truncated: boolean;
   max_hops: number;
 }
 

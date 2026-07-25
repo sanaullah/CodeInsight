@@ -488,7 +488,8 @@ describe("application shell", () => {
         },
       ],
       truncated: false,
-      limits: { depth: 1, node_limit: 160 },
+      findings_truncated: false,
+      limits: { depth: 1, node_limit: 160, finding_limit: 500 },
     });
     vi.mocked(apiClient.semanticComponent).mockResolvedValue({
       ...components[0],
@@ -520,13 +521,18 @@ describe("application shell", () => {
           component_id: "service-orders",
         },
       ],
+      evidence_truncated: false,
+      limits: { detail_row_limit: 250 },
     });
     vi.mocked(apiClient.semanticTrace).mockResolvedValue({
       snapshot_id: "snapshot-1",
       status: "complete",
       components,
       relations: [relation],
+      endpoints: [],
+      resources: [],
       provenance: [],
+      evidence_truncated: false,
       max_hops: 8,
     });
     vi.mocked(apiClient.finding).mockResolvedValue({

@@ -33,7 +33,7 @@ export function componentLabel(component: SemanticComponent): string {
 }
 
 export function projectionStatus(graph: SemanticArchitectureGraph): ArchitectureProjectionStatus {
-  if (graph.truncated) return "truncated";
+  if (graph.truncated || graph.findings_truncated) return "truncated";
   const status = graph.completeness?.status;
   if (status === "partial" || status === "unsupported" || status === "complete") {
     return status;

@@ -86,6 +86,13 @@ export function ComponentInspector({
           ) : null}
           {detail ? (
             <>
+              {detail.evidence_truncated ? (
+                <p className="architecture-inline-error">
+                  Component evidence reached the server limit of {detail.limits.detail_row_limit}{" "}
+                  rows per evidence type. Focus the repository or inspect source evidence for a
+                  narrower view.
+                </p>
+              ) : null}
               <InspectorList
                 empty="No file memberships were derived."
                 heading="Repository membership"

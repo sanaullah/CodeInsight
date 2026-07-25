@@ -74,6 +74,7 @@ describe("architecture view model", () => {
     } as unknown as SemanticArchitectureGraph;
     expect(projectionStatus(graph)).toBe("complete");
     expect(projectionStatus({ ...graph, truncated: true })).toBe("truncated");
+    expect(projectionStatus({ ...graph, findings_truncated: true })).toBe("truncated");
     expect(
       projectionStatus({ ...graph, completeness: { status: "partial", extractor_version: null } }),
     ).toBe("partial");
