@@ -220,6 +220,23 @@ describe("application shell", () => {
     view.unmount();
   });
 
+  it.each([
+    ["/", "Repository intelligence you can inspect."],
+    ["/new-review", "Start a new review"],
+    ["/settings", "Settings"],
+    ["/history", "Review history"],
+    ["/findings", "Findings"],
+    ["/architecture", "Architecture explorer"],
+  ])("keeps %s inside the shared content column", async (path, heading) => {
+    window.history.replaceState({}, "", path);
+    const view = render(<App />);
+    const pageHeading = await screen.findByRole("heading", { name: heading });
+
+    expect(pageHeading.closest(".page")).not.toBeNull();
+    expect(pageHeading.closest("main")).not.toBeNull();
+    view.unmount();
+  });
+
   it("explains an API contract mismatch without hiding runtime diagnostics", async () => {
     vi.mocked(apiClient.health).mockResolvedValue({
       ...healthFixture,

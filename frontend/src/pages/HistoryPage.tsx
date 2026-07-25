@@ -85,7 +85,7 @@ export function HistoryPage() {
     : null;
 
   return (
-    <>
+    <div className="page">
       <PageHeader
         description="Compare durable review outcomes and inspect measured trends without overstating partial history."
         eyebrow="Longitudinal intelligence"
@@ -295,7 +295,7 @@ export function HistoryPage() {
           </div>
         </Panel>
       ) : null}
-    </>
+    </div>
   );
 }
 

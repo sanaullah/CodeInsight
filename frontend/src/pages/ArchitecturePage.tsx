@@ -70,7 +70,7 @@ export function ArchitecturePage() {
   }
 
   return (
-    <>
+    <div className="page">
       <PageHeader
         description="Explore bounded file, import, and call relationships derived from the immutable repository index."
         eyebrow="Repository evidence"
@@ -283,6 +283,6 @@ export function ArchitecturePage() {
       ) : (
         <div className="loading-state">Loading architecture…</div>
       )}
-    </>
+    </div>
   );
 }

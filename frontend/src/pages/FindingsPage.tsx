@@ -121,7 +121,7 @@ export function FindingsPage() {
   }
 
   return (
-    <>
+    <div className="page">
       <PageHeader
         actions={
           <div className="button-row">
@@ -406,7 +406,7 @@ export function FindingsPage() {
           </aside>
         </>
       ) : null}
-    </>
+    </div>
   );
 }
 
