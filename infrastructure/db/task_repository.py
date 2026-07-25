@@ -305,6 +305,7 @@ class SqliteTaskRepository:
         *,
         error: str,
         retry_delay_seconds: float = 0,
+        retryable: bool = True,
     ) -> str:
         if retry_delay_seconds < 0:
             raise ValueError("retry_delay_seconds cannot be negative")
@@ -325,6 +326,8 @@ class SqliteTaskRepository:
             if row is None:
                 return "stale"
             retry = (
+                retryable
+                and
                 not bool(row["cancellation_requested"])
                 and int(row["attempt_count"]) < int(row["max_attempts"])
             )

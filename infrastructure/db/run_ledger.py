@@ -16,6 +16,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TypeVar
 
+from domain.contracts import RunStage
+
 from .database import database_connection, initialize_database, open_database
 
 _T = TypeVar("_T")
@@ -261,6 +263,30 @@ class SqliteRunLedger:
             self._append_event(connection, run_id, event_type, data)
 
         self._write(operation)
+
+    def set_stage(self, run_id: str, stage: RunStage) -> bool:
+        timestamp = _utc_now()
+
+        def operation(connection: sqlite3.Connection) -> bool:
+            cursor = connection.execute(
+                """
+                UPDATE runs SET current_stage = ?, updated_at = ?
+                WHERE run_id = ? AND status = 'running'
+                """,
+                (stage.value, timestamp, run_id),
+            )
+            if cursor.rowcount != 1:
+                return False
+            self._append_event(
+                connection,
+                run_id,
+                "stage_changed",
+                {"stage": stage.value},
+                created_at=timestamp,
+            )
+            return True
+
+        return self._write(operation)
 
     def succeed(self, run_id: str, result: dict[str, Any]) -> bool:
         timestamp = _utc_now()

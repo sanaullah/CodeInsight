@@ -5,7 +5,12 @@ from __future__ import annotations
 from importlib import import_module
 from typing import Any
 
-from .task_scheduler import NativeTaskScheduler, TaskContext, TaskResult
+from .task_scheduler import (
+    NativeTaskScheduler,
+    PermanentTaskError,
+    TaskContext,
+    TaskResult,
+)
 
 _LEGACY_EXPORTS = {
     "GraphBuilder": ("workflow.graph_builder", "GraphBuilder"),
@@ -24,7 +29,13 @@ _LEGACY_EXPORTS = {
     "setup_langfuse_callbacks": ("workflow.integration", "setup_langfuse_callbacks"),
 }
 
-__all__ = ["NativeTaskScheduler", "TaskContext", "TaskResult", *_LEGACY_EXPORTS]
+__all__ = [
+    "NativeTaskScheduler",
+    "PermanentTaskError",
+    "TaskContext",
+    "TaskResult",
+    *_LEGACY_EXPORTS,
+]
 
 
 def __getattr__(name: str) -> Any:

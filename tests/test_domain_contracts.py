@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -76,9 +76,32 @@ def test_evidence_round_trips_with_immutable_snapshot_identity() -> None:
         excerpt_hash="b" * 64,
         evidence_kind="source",
         provenance={"analyzer": "python-ast", "version": "1"},
-        collected_at=datetime.now(timezone.utc),
+        collected_at=datetime.now(UTC),
     )
 
     restored = EvidenceRef.model_validate_json(evidence.model_dump_json())
     assert restored == evidence
     assert restored.snapshot_id == "snapshot-1"
+
+
+def test_evidence_rejects_reversed_line_and_byte_spans() -> None:
+    common = {
+        "evidence_id": "evidence-1",
+        "snapshot_id": "snapshot-1",
+        "file_id": "file-1",
+        "content_hash": "a" * 64,
+        "excerpt_hash": "b" * 64,
+        "evidence_kind": "source",
+        "provenance": {},
+        "collected_at": datetime.now(UTC),
+    }
+    with pytest.raises(ValidationError, match="end_line"):
+        EvidenceRef(start_line=5, end_line=4, **common)
+    with pytest.raises(ValidationError, match="end_byte"):
+        EvidenceRef(
+            start_line=1,
+            end_line=1,
+            start_byte=10,
+            end_byte=9,
+            **common,
+        )

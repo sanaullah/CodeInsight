@@ -25,6 +25,7 @@ from .contracts import (
     RunBudget,
     RunStage,
     TaskStatus,
+    WavePlan,
 )
 from .experience import Experience, Outcome, PerformanceMetrics, SuccessLevel
 from .skills import SwarmSkill
@@ -62,4 +63,5 @@ __all__ = [
     "SuccessLevel",
     "SwarmSkill",
     "TaskStatus",
+    "WavePlan",
 ]

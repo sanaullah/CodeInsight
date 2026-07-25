@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ContractModel(BaseModel):
@@ -115,6 +115,17 @@ class AnalysisTask(ContractModel):
     cancellation_requested: bool = False
 
 
+class WavePlan(ContractModel):
+    wave_id: str
+    run_id: str
+    wave_number: int = Field(ge=1)
+    rationale: str
+    roles: tuple[RoleSpec, ...]
+    tasks: tuple[AnalysisTask, ...]
+    coverage_targets: tuple[str, ...]
+    reserved_follow_up: bool = False
+
+
 class EvidenceRef(ContractModel):
     evidence_id: str
     snapshot_id: str
@@ -130,6 +141,18 @@ class EvidenceRef(ContractModel):
     end_byte: int | None = Field(default=None, ge=0)
     symbol_ids: tuple[str, ...] = ()
     graph_node_ids: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def validate_span(self) -> EvidenceRef:
+        if self.end_line < self.start_line:
+            raise ValueError("end_line cannot precede start_line")
+        if (
+            self.start_byte is not None
+            and self.end_byte is not None
+            and self.end_byte < self.start_byte
+        ):
+            raise ValueError("end_byte cannot precede start_byte")
+        return self
 
 
 class FindingCandidate(ContractModel):

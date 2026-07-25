@@ -14,6 +14,10 @@ TaskHandler = Callable[[TaskLease, "TaskContext"], Awaitable["TaskResult"]]
 SchedulerEventSink = Callable[[str, dict[str, Any]], None]
 
 
+class PermanentTaskError(RuntimeError):
+    """A deterministic task failure that must not consume retry/model budget."""
+
+
 @dataclass(frozen=True, slots=True)
 class TaskResult:
     output_artifact_id: str | None = None
@@ -170,6 +174,7 @@ class NativeTaskScheduler:
                 lease,
                 error=str(exc),
                 retry_delay_seconds=self.retry_delay_seconds,
+                retryable=not isinstance(exc, PermanentTaskError),
             )
             self._emit("task_failed", lease, {"status": status, "reason": str(exc)})
 

@@ -1,5 +1,7 @@
 """Single-database durable storage for CodeInsight."""
 
+from .analysis_repository import SqliteAnalysisRepository
+from .artifact_repository import SqliteArtifactRepository
 from .database import (
     SCHEMA_VERSION,
     checkpoint_database,
@@ -11,6 +13,8 @@ from .task_repository import SqliteTaskRepository, TaskLease
 
 __all__ = [
     "SCHEMA_VERSION",
+    "SqliteAnalysisRepository",
+    "SqliteArtifactRepository",
     "checkpoint_database",
     "initialize_database",
     "open_database",

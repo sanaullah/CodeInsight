@@ -229,6 +229,72 @@ class SqliteSnapshotRepository:
                 for row in rows
             ]
 
+    def file_contexts(
+        self,
+        snapshot_id: str,
+        relative_paths: Sequence[str],
+    ) -> list[dict[str, Any]]:
+        if not relative_paths:
+            return []
+        unique_paths = sorted(set(relative_paths))
+        placeholders = ",".join("?" for _ in unique_paths)
+        with database_connection(self.database_path) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT files.file_id, files.relative_path, files.content_hash,
+                       files.language, files.classification, files.support_tier,
+                       files.line_count, files.metadata_json,
+                       artifacts.artifact_id, artifacts.storage_path,
+                       artifacts.byte_size, artifacts.media_type
+                FROM files
+                JOIN artifacts USING(artifact_id)
+                WHERE files.snapshot_id = ?
+                  AND files.relative_path IN ({placeholders})
+                ORDER BY files.relative_path
+                """,
+                (snapshot_id, *unique_paths),
+            ).fetchall()
+            return [
+                {
+                    **{key: row[key] for key in row.keys() if key != "metadata_json"},
+                    "metadata": json.loads(row["metadata_json"]),
+                }
+                for row in rows
+            ]
+
+    def file_contexts_by_ids(
+        self,
+        snapshot_id: str,
+        file_ids: Sequence[str],
+    ) -> list[dict[str, Any]]:
+        if not file_ids:
+            return []
+        unique_ids = sorted(set(file_ids))
+        placeholders = ",".join("?" for _ in unique_ids)
+        with database_connection(self.database_path) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT files.file_id, files.relative_path, files.content_hash,
+                       files.language, files.classification, files.support_tier,
+                       files.line_count, files.metadata_json,
+                       artifacts.artifact_id, artifacts.storage_path,
+                       artifacts.byte_size, artifacts.media_type
+                FROM files
+                JOIN artifacts USING(artifact_id)
+                WHERE files.snapshot_id = ?
+                  AND files.file_id IN ({placeholders})
+                ORDER BY files.relative_path
+                """,
+                (snapshot_id, *unique_ids),
+            ).fetchall()
+            return [
+                {
+                    **{key: row[key] for key in row.keys() if key != "metadata_json"},
+                    "metadata": json.loads(row["metadata_json"]),
+                }
+                for row in rows
+            ]
+
     def neighborhood(
         self,
         snapshot_id: str,
