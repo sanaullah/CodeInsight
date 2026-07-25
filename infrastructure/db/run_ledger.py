@@ -373,6 +373,9 @@ class SqliteRunLedger:
 
     def cancel(self, run_id: str) -> bool:
         timestamp = _utc_now()
+        error_json = json.dumps(
+            {"message": "run cancellation requested"}, separators=(",", ":")
+        )
 
         def operation(connection: sqlite3.Connection) -> bool:
             cursor = connection.execute(
@@ -386,12 +389,54 @@ class SqliteRunLedger:
             )
             if cursor.rowcount != 1:
                 return False
+            self.terminalize_active_tasks(
+                connection,
+                run_id=run_id,
+                timestamp=timestamp,
+                error_json=error_json,
+            )
             self._append_event(
                 connection, run_id, "analysis_cancelled", {}, created_at=timestamp
             )
             return True
 
         return self._write(operation)
+
+    @staticmethod
+    def terminalize_active_tasks(
+        connection: sqlite3.Connection,
+        *,
+        run_id: str,
+        timestamp: str,
+        error_json: str,
+    ) -> int:
+        """Cancel active tasks and attempts inside the caller's transaction."""
+
+        connection.execute(
+            """
+            UPDATE task_attempts
+            SET status = 'cancelled', completed_at = ?, error_json = ?
+            WHERE task_id IN (
+                SELECT task_id FROM tasks
+                WHERE run_id = ?
+                  AND status IN ('queued', 'retry_wait', 'leased')
+            )
+              AND status = 'running'
+            """,
+            (timestamp, error_json, run_id),
+        )
+        cursor = connection.execute(
+            """
+            UPDATE tasks
+            SET cancellation_requested = 1, status = 'cancelled',
+                completed_at = ?, updated_at = ?, error_json = ?,
+                lease_owner = NULL, lease_expires_at = NULL
+            WHERE run_id = ?
+              AND status IN ('queued', 'retry_wait', 'leased')
+            """,
+            (timestamp, timestamp, error_json, run_id),
+        )
+        return cursor.rowcount
 
     def recover_interrupted(self) -> int:
         timestamp = _utc_now()

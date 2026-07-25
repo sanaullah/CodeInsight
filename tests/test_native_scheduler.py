@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 
 from domain.contracts import AnalysisTask, RoleSpec
+from infrastructure.db.database import database_connection
 from infrastructure.db.run_ledger import SqliteRunLedger
 from infrastructure.db.task_repository import SqliteTaskRepository
 from workflow.task_scheduler import (
@@ -252,30 +253,76 @@ async def test_scheduler_times_out_and_records_failure(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_run_cancellation_stops_active_and_queued_tasks(tmp_path: Path) -> None:
-    async with _repository(tmp_path) as (_ledger, repository):
-        repository.enqueue(_task("active-task"))
+    async with _repository(tmp_path) as (ledger, repository):
+        repository.enqueue(_task("active-task-1"))
+        repository.enqueue(_task("active-task-2"))
         repository.enqueue(_task("queued-task"))
         started = asyncio.Event()
+        started_count = 0
 
         async def waiting(_lease: Any, _context: TaskContext) -> TaskResult:
-            started.set()
+            nonlocal started_count
+            started_count += 1
+            if started_count == 2:
+                started.set()
             await asyncio.Event().wait()
             return TaskResult()
 
         scheduler = NativeTaskScheduler(
             repository,
             {"inspect": waiting},
-            max_concurrent=1,
+            max_concurrent=2,
             cancellation_poll_seconds=0.001,
         )
         draining = asyncio.create_task(scheduler.run_until_idle(run_id="run-1"))
         await asyncio.wait_for(started.wait(), timeout=1)
-        assert repository.request_run_cancellation("run-1") == 2
+        assert ledger.cancel("run-1")
         counts = await asyncio.wait_for(draining, timeout=1)
 
-        assert counts == {"cancelled": 2}
-        assert repository.get_task("active-task")["cancellation_requested"]
+        assert counts == {"cancelled": 3}
+        assert repository.get_task("active-task-1")["cancellation_requested"]
+        assert repository.get_task("active-task-2")["cancellation_requested"]
         assert repository.get_task("queued-task")["cancellation_requested"]
+        assert repository.get_task("active-task-1")["lease_owner"] is None
+        assert repository.get_task("active-task-2")["lease_owner"] is None
+        with database_connection(ledger.database_path) as connection:
+            attempts = connection.execute(
+                """
+                SELECT status, completed_at
+                FROM task_attempts ORDER BY task_id
+                """
+            ).fetchall()
+        assert len(attempts) == 2
+        assert all(row["status"] == "cancelled" for row in attempts)
+        assert all(row["completed_at"] is not None for row in attempts)
+
+
+@pytest.mark.asyncio
+async def test_cross_process_cancellation_request_terminalizes_leases(
+    tmp_path: Path,
+) -> None:
+    async with _repository(tmp_path) as (ledger, repository):
+        repository.enqueue(_task("leased-task"))
+        repository.enqueue(_task("queued-task"))
+        leases = repository.lease(
+            worker_id="worker-1", limit=1, lease_seconds=30
+        )
+        assert len(leases) == 1
+
+        assert repository.request_run_cancellation("run-1") == 2
+        assert repository.get_task("leased-task")["status"] == "cancelled"
+        assert repository.get_task("queued-task")["status"] == "cancelled"
+        assert ledger.get_run("run-1")["status"] == "running"
+        with database_connection(ledger.database_path) as connection:
+            run_cancelled = connection.execute(
+                "SELECT cancellation_requested FROM runs WHERE run_id = 'run-1'"
+            ).fetchone()["cancellation_requested"]
+            attempt = connection.execute(
+                "SELECT status, completed_at FROM task_attempts"
+            ).fetchone()
+        assert run_cancelled == 1
+        assert attempt["status"] == "cancelled"
+        assert attempt["completed_at"] is not None
 
 
 @pytest.mark.asyncio

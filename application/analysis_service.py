@@ -112,11 +112,15 @@ class NativeAnalysisExecutor:
                 "target_count": len(index.target_paths),
             },
         )
+        budget = request.run_budget()
+        if self.offline and budget.max_waves > 1:
+            budget = budget.model_copy(update={"max_waves": 1})
         specialist = GatewaySpecialistClient(
             gateway=self.gateway,
             model=request.model_name or self.default_model,
             calls=SqliteModelCallRepository(self.ledger),
             traces=self.tracer,
+            max_output_tokens=min(8_000, budget.max_tokens),
         )
         harness = TrustedSpecialistHarness(
             client=specialist,
@@ -139,9 +143,6 @@ class NativeAnalysisExecutor:
             analysis=analysis,
             scheduler=scheduler,
         )
-        budget = request.run_budget()
-        if self.offline and budget.max_waves > 1:
-            budget = budget.model_copy(update={"max_waves": 1})
         if isinstance(self.gateway, BoundedModelGateway):
             await self.gateway.configure_run_budget(
                 run_id,
@@ -518,7 +519,6 @@ class AnalysisService:
         ledger = self._get_ledger()
         if ledger.get_run(run_id) is None:
             return None
-        SqliteTaskRepository(ledger).request_run_cancellation(run_id)
         ledger.cancel(run_id)
         async with self._task_lock:
             task = self._tasks.get(run_id)

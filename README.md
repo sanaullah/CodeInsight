@@ -76,6 +76,28 @@ By default, local application state is stored in the ignored
 `CODEINSIGHT_DATA_DIR` or `CODEINSIGHT_DATABASE_PATH` in `.env` to use a
 different durable location.
 
+### Opt-in live provider compatibility smoke test
+
+The deterministic suite never calls a model provider. To explicitly authorize
+one bounded end-to-end API analysis against the configured OpenAI-compatible
+endpoint, first configure the endpoint, model, and credentials in `.env`, then
+run:
+
+```powershell
+$env:CODEINSIGHT_RUN_LIVE_PROVIDER_TEST = "1"
+uv run pytest -m live_provider tests/test_live_provider_smoke.py
+Remove-Item Env:CODEINSIGHT_RUN_LIVE_PROVIDER_TEST
+```
+
+The test uses one agent, one task, one wave, an 8,000-token run budget, a
+2,500-token output cap, a $0.10 cost ceiling, a 45-second provider-call
+timeout, and a 90-second overall deadline. It disables Langfuse and does not
+print credentials, endpoint URLs, fixture source, prompts, or raw provider
+responses. Without explicit opt-in, an endpoint, a non-default model, and
+credentials, it skips without network access. The live smoke deliberately uses
+the schema-in-prompt `json_object` compatibility mode; deterministic contract
+tests separately cover strict `json_schema` negotiation and automatic fallback.
+
 Initialize or upgrade the single application database explicitly when desired:
 
 ```bash

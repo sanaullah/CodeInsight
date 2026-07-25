@@ -436,6 +436,9 @@ class SqliteTaskRepository:
 
     def request_run_cancellation(self, run_id: str) -> int:
         timestamp = _timestamp(_utc_now())
+        error_json = json.dumps(
+            {"message": "run cancellation requested"}, separators=(",", ":")
+        )
 
         def operation(connection: sqlite3.Connection) -> int:
             connection.execute(
@@ -443,25 +446,12 @@ class SqliteTaskRepository:
                 "WHERE run_id = ?",
                 (timestamp, run_id),
             )
-            cursor = connection.execute(
-                """
-                UPDATE tasks
-                SET cancellation_requested = 1,
-                    status = CASE
-                        WHEN status IN ('queued', 'retry_wait') THEN 'cancelled'
-                        ELSE status
-                    END,
-                    completed_at = CASE
-                        WHEN status IN ('queued', 'retry_wait') THEN ?
-                        ELSE completed_at
-                    END,
-                    updated_at = ?
-                WHERE run_id = ?
-                  AND status IN ('queued', 'retry_wait', 'leased')
-                """,
-                (timestamp, timestamp, run_id),
+            return self.ledger.terminalize_active_tasks(
+                connection,
+                run_id=run_id,
+                timestamp=timestamp,
+                error_json=error_json,
             )
-            return cursor.rowcount
 
         return self.ledger.write_transaction(operation)
 

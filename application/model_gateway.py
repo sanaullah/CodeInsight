@@ -63,6 +63,17 @@ class ModelBudgetExceeded(RuntimeError):
 class ProviderUnavailable(RuntimeError):
     """The configured provider could not complete a request."""
 
+    def __init__(
+        self,
+        message: str,
+        *,
+        category: str = "provider_unavailable",
+        http_status: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.category = category
+        self.http_status = http_status
+
 
 class BoundedModelGateway:
     """Enforce provider concurrency and per-run token/cost budgets."""

@@ -32,6 +32,9 @@ addopts = "-q"
 asyncio_mode = "auto"
 pythonpath = ["."]
 testpaths = ["tests"]
+markers = [
+    "live_provider: opt-in bounded test against configured provider credentials",
+]
 
 [tool.coverage.run]
 branch = true

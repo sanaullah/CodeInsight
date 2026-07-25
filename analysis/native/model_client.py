@@ -5,8 +5,14 @@ from __future__ import annotations
 import hashlib
 import json
 
+from pydantic import ValidationError
+
 from analysis.native.harness import SpecialistOutput, SpecialistRequest
-from application.model_gateway import ModelGateway, ModelRequest
+from application.model_gateway import (
+    ModelGateway,
+    ModelRequest,
+    ProviderUnavailable,
+)
 from application.tracing import TraceEvent, TraceExporter
 from infrastructure.db.model_call_repository import SqliteModelCallRepository
 
@@ -116,13 +122,42 @@ class GatewaySpecialistClient:
                 )
             )
             raise
-        content = dict(response.content)
-        if response.provider == "offline":
-            content["analyzed_paths"] = [
-                item.relative_path for item in request.files
-            ]
-        content["usage"] = response.usage.as_dict()
-        output = SpecialistOutput.model_validate(content)
+        try:
+            content = dict(response.content)
+            if response.provider == "offline":
+                content["analyzed_paths"] = [
+                    item.relative_path for item in request.files
+                ]
+            content["usage"] = response.usage.as_dict()
+            output = SpecialistOutput.model_validate(content)
+        except ValidationError as exc:
+            self.calls.finish(model_call_id, status="failed")
+            locations = sorted(
+                {
+                    ".".join(str(part) for part in error["loc"])
+                    for error in exc.errors(include_url=False, include_context=False)
+                }
+            )
+            field_summary = ",".join(locations[:8])
+            self.traces.emit(
+                TraceEvent(
+                    name="model_call_failed",
+                    run_id=request.run_id,
+                    wave_id=request.wave_id,
+                    task_id=request.task_id,
+                    model_call_id=model_call_id,
+                    attributes={
+                        "category": "response_schema_validation",
+                        "error_count": exc.error_count(),
+                    },
+                )
+            )
+            raise ProviderUnavailable(
+                "provider_contract_error "
+                "category=response_schema_validation "
+                f"errors={exc.error_count()} fields={field_summary}",
+                category="response_schema_validation",
+            ) from exc
         usage = response.usage.as_dict()
         self.calls.finish(model_call_id, status="succeeded", usage=usage)
         self.traces.emit(

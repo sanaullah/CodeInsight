@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import sys
 import threading
 import time
 import types
+import urllib.error
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import replace
@@ -38,7 +40,12 @@ def _request(run_id: str = "run-1") -> ModelRequest:
         model="fixture",
         system_prompt="system",
         user_prompt="{}",
-        response_schema={},
+        response_schema={
+            "type": "object",
+            "properties": {"findings": {"type": "array"}},
+            "required": ["findings"],
+            "additionalProperties": False,
+        },
         max_output_tokens=10,
         timeout_seconds=1,
         token_budget=10,
@@ -204,16 +211,20 @@ async def test_openai_compatible_gateway_uses_real_chat_completions_contract() -
     assert captured["path"] == "/v1/chat/completions"
     assert captured["authorization"] == "Bearer local-secret"
     assert captured["content_type"] == "application/json"
-    assert captured["body"] == {
-        "model": "fixture",
-        "messages": [
-            {"role": "system", "content": "system"},
-            {"role": "user", "content": "{}"},
-        ],
-        "temperature": 0,
-        "max_tokens": 10,
-        "response_format": {"type": "json_object"},
+    assert captured["body"]["model"] == "fixture"
+    assert captured["body"]["messages"][1] == {"role": "user", "content": "{}"}
+    assert captured["body"]["messages"][0]["content"].startswith("system")
+    assert '"required":["findings"]' in captured["body"]["messages"][0]["content"]
+    assert captured["body"]["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "specialist_output",
+            "strict": True,
+            "schema": _request().response_schema,
+        },
     }
+    assert captured["body"]["temperature"] == 0
+    assert captured["body"]["max_tokens"] == 10
     assert response.provider == "openai-compatible"
     assert response.model == "local-served-model"
     assert response.provider_request_id == "local-request-1"
@@ -223,7 +234,7 @@ async def test_openai_compatible_gateway_uses_real_chat_completions_contract() -
 @pytest.mark.asyncio
 async def test_openai_compatible_gateway_classifies_real_http_failure() -> None:
     with _openai_compatible_server(status=503) as (base_url, _captured):
-        with pytest.raises(RuntimeError, match="unavailable"):
+        with pytest.raises(RuntimeError, match="provider_http_error status=503"):
             await OpenAICompatibleGateway(base_url=base_url).complete(_request())
 
 
@@ -231,10 +242,19 @@ async def test_openai_compatible_gateway_classifies_real_http_failure() -> None:
 @pytest.mark.parametrize(
     ("body", "message"),
     [
-        (b"not-json", "unavailable"),
+        (b"not-json", "invalid_envelope_json"),
+        (b"[]", "invalid_envelope_shape"),
         (
             json.dumps({"choices": []}).encode(),
-            "invalid response",
+            "invalid_response_shape",
+        ),
+        (
+            json.dumps({"choices": [{"message": {"content": []}}]}).encode(),
+            "invalid_content_type",
+        ),
+        (
+            json.dumps({"choices": [{"message": {"content": "not-json"}}]}).encode(),
+            "invalid_content_json",
         ),
     ],
 )
@@ -255,6 +275,118 @@ async def test_openai_compatible_gateway_classifies_bad_responses(
     with pytest.raises(RuntimeError, match=message):
         await OpenAICompatibleGateway(base_url="http://localhost/v1").complete(
             _request()
+        )
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_gateway_falls_back_to_prompted_json_object(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payloads: list[dict[str, Any]] = []
+
+    class Response:
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps(
+                {
+                    "model": "served-model",
+                    "choices": [{"message": {"content": '{"findings":[]}'}}],
+                }
+            ).encode()
+
+    def urlopen(request: Any, timeout: float) -> Response:
+        del timeout
+        payloads.append(json.loads(request.data))
+        if len(payloads) == 1:
+            raise urllib.error.HTTPError(
+                request.full_url,
+                400,
+                "strict schema unsupported",
+                {},
+                io.BytesIO(b'{"error":"sensitive provider detail"}'),
+            )
+        return Response()
+
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+    response = await OpenAICompatibleGateway(
+        base_url="https://provider.invalid/v1"
+    ).complete(_request())
+
+    assert response.content == {"findings": []}
+    assert [item["response_format"]["type"] for item in payloads] == [
+        "json_schema",
+        "json_object",
+    ]
+    assert payloads[0]["messages"] == payloads[1]["messages"]
+    assert '"additionalProperties":false' in payloads[1]["messages"][0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_gateway_can_use_profiled_json_object_mode() -> None:
+    with _openai_compatible_server() as (base_url, captured):
+        await OpenAICompatibleGateway(
+            base_url=base_url,
+            prefer_strict_schema=False,
+        ).complete(_request())
+
+    assert captured["body"]["response_format"] == {"type": "json_object"}
+    assert '"required":["findings"]' in captured["body"]["messages"][0]["content"]
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_gateway_classifies_transport_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unavailable(*_args: object, **_kwargs: object) -> None:
+        raise OSError("private transport detail")
+
+    monkeypatch.setattr("urllib.request.urlopen", unavailable)
+    with pytest.raises(RuntimeError, match="category=connection") as caught:
+        await OpenAICompatibleGateway(
+            base_url="https://provider.invalid/v1"
+        ).complete(_request())
+    assert "private transport detail" not in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_openai_compatible_gateway_errors_are_sanitized(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def urlopen(request: Any, timeout: float) -> None:
+        del timeout
+        raise urllib.error.HTTPError(
+            request.full_url,
+            401,
+            "secret diagnostic",
+            {},
+            io.BytesIO(b'{"error":"credential was abc123"}'),
+        )
+
+    monkeypatch.setattr("urllib.request.urlopen", urlopen)
+    with pytest.raises(RuntimeError) as caught:
+        await OpenAICompatibleGateway(
+            base_url="https://provider.invalid/v1",
+            api_key="abc123",
+        ).complete(_request())
+    assert str(caught.value) == "provider_http_error status=401"
+    assert "abc123" not in str(caught.value)
+    assert caught.value.category == "http_error"
+    assert caught.value.http_status == 401
+
+
+def test_openai_compatible_gateway_validates_timeout_cap() -> None:
+    with pytest.raises(ValueError, match="greater than zero"):
+        OpenAICompatibleGateway(
+            base_url="http://localhost/v1", timeout_cap_seconds=0
+        )
+    with pytest.raises(ValueError, match="greater than zero"):
+        OpenAICompatibleGateway(
+            base_url="http://localhost/v1", max_output_tokens_cap=0
         )
 
 

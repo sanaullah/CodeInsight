@@ -77,6 +77,22 @@ class FailingGateway:
         raise OSError("local provider unavailable")
 
 
+class WrongContractGateway:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    async def complete(self, request: ModelRequest) -> ModelResponse:
+        self.calls += 1
+        return ModelResponse(
+            content={
+                "analyzed_targets": ["private-provider-output.py"],
+                "findings": [{"message": "raw model prose must not be persisted"}],
+            },
+            provider="fixture",
+            model=request.model,
+        )
+
+
 def _repository(tmp_path: Path) -> Path:
     root = tmp_path / "repository"
     (root / "tests").mkdir(parents=True)
@@ -219,6 +235,40 @@ async def test_provider_failures_are_bounded_and_surface_needs_attention(
     intelligence = await service.intelligence(submitted.run_id)
     assert intelligence is not None
     assert intelligence.tasks[0]["status"] == "failed"
+    assert intelligence.model_calls[0]["status"] == "failed"
+    assert gateway.calls == 3
+    await service.close()
+
+
+@pytest.mark.asyncio
+async def test_provider_contract_failures_are_sanitized_and_bounded(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "provider-contract-failure.db"
+    gateway = WrongContractGateway()
+    service = AnalysisService(
+        database_path=database_path,
+        max_concurrent=1,
+        settings=ApiSettings(database_path=database_path),
+        gateway=gateway,
+    )
+    submitted = await service.submit(
+        AnalysisRequest(
+            project_path=str(_repository(tmp_path)),
+            max_agents=1,
+            max_tasks=1,
+            max_waves=1,
+        )
+    )
+
+    status, _run = await _wait_for_terminal(service, submitted.run_id)
+    assert status == AnalysisStatus.NEEDS_ATTENTION
+    intelligence = await service.intelligence(submitted.run_id)
+    assert intelligence is not None
+    error = intelligence.tasks[0]["error"]["message"]
+    assert "category=response_schema_validation" in error
+    assert "raw model prose" not in error
+    assert "private-provider-output.py" not in error
     assert intelligence.model_calls[0]["status"] == "failed"
     assert gateway.calls == 3
     await service.close()
