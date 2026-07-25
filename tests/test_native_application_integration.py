@@ -313,6 +313,18 @@ def test_fastapi_exposes_native_status_intelligence_recovery_and_ui(
         frontend = client.get("/").text
         assert "Planned specialists" in frontend
         assert "Coverage and gaps" in frontend
+        assert 'id="analysis-mode"' in frontend
+        assert 'id="max-waves"' in frontend
+        assert 'id="chunking-strategy"' not in frontend
+        assert 'id="tool-calling"' not in frontend
+        app_script = client.get("/assets/app.js").text
+        assert 'cancelled: "Review cancelled"' in app_script
+
+        retired = client.post(
+            "/api/v1/analyses",
+            json={"project_path": str(root), "enable_tool_calling": True},
+        )
+        assert retired.status_code == 422
 
     with database_connection(database_path) as connection:
         assert connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"

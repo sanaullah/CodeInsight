@@ -8,6 +8,14 @@ const state = {
 
 const byId = (id) => document.getElementById(id);
 const terminalStatuses = new Set(["succeeded", "failed", "cancelled", "needs_attention"]);
+const runTitles = {
+  cancelled: "Review cancelled",
+  failed: "Review needs attention",
+  needs_attention: "Review completed with gaps",
+  queued: "Review queued",
+  running: "Review in progress",
+  succeeded: "Review complete",
+};
 
 function setApiState(mode, label) {
   const element = byId("api-state");
@@ -161,14 +169,7 @@ function renderRun(run) {
   byId("empty-state").classList.add("hidden");
   byId("run-content").classList.remove("hidden");
   byId("run-id").textContent = run.run_id;
-  byId("run-title").textContent =
-    run.status === "succeeded"
-      ? "Review complete"
-      : run.status === "needs_attention"
-        ? "Review completed with gaps"
-      : run.status === "failed"
-        ? "Review needs attention"
-        : "Review in progress";
+  byId("run-title").textContent = runTitles[run.status] || "Review status unavailable";
   updateStatus(run.status);
   renderTimeline(run.events || []);
 
@@ -217,18 +218,15 @@ async function startReview(event) {
   const button = byId("start-review");
   button.disabled = true;
 
-  const strategy = byId("chunking-strategy").value;
   const payload = {
     project_path: byId("project-path").value,
     goal: byId("goal").value || null,
     model_name: byId("model-name").value || null,
     max_agents: Number(byId("max-agents").value),
-    max_tokens_per_chunk: Number(byId("max-tokens").value),
-    enable_chunking: strategy !== "NONE",
-    chunking_strategy: strategy,
-    auto_detect_languages: true,
-    enable_dynamic_file_selection: byId("dynamic-files").checked,
-    enable_tool_calling: byId("tool-calling").checked,
+    mode: byId("analysis-mode").value,
+    max_waves: Number(byId("max-waves").value),
+    max_tasks: Number(byId("max-tasks").value),
+    max_total_tokens: Number(byId("max-total-tokens").value),
   };
 
   try {

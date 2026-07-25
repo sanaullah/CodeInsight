@@ -619,7 +619,11 @@ def _extract_edges(
                 edges.append(
                     _edge(snapshot_id, source_id, candidates[0], "calls", 0.7)
                 )
-    return edges
+    # Repeated calls between the same symbols are one graph relationship.
+    # The stable edge identity intentionally excludes source locations, so
+    # collapse duplicates before the SQLite primary-key boundary.
+    unique_edges = {str(edge["edge_id"]): edge for edge in edges}
+    return [unique_edges[edge_id] for edge_id in sorted(unique_edges)]
 
 
 def _edge(

@@ -8,10 +8,13 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from pathlib import Path
 
+import pytest
+
 from infrastructure.db.database import (
     SCHEMA_VERSION,
     database_connection,
     initialize_database,
+    open_database,
 )
 from infrastructure.db.run_ledger import SqliteRunLedger
 
@@ -253,6 +256,27 @@ def test_writer_waits_for_short_lock_and_completes(tmp_path: Path) -> None:
     run = ledger.get_run("run-1")
     assert run is not None
     assert run["events"][-1]["event_type"] == "after_lock"
+
+
+def test_bounded_busy_timeout_exhausts_under_persistent_writer_lock(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "codeinsight.db"
+    initialize_database(database_path)
+    blocker = open_database(database_path)
+    contender = open_database(database_path, busy_timeout_ms=25)
+    blocker.execute("BEGIN IMMEDIATE")
+    started = time.perf_counter()
+    try:
+        with pytest.raises(sqlite3.OperationalError, match="locked"):
+            contender.execute("BEGIN IMMEDIATE")
+    finally:
+        blocker.rollback()
+        blocker.close()
+        contender.close()
+
+    elapsed = time.perf_counter() - started
+    assert 0.015 <= elapsed < 1
 
 
 def test_sqlite_backup_includes_committed_wal_state(tmp_path: Path) -> None:

@@ -139,6 +139,36 @@ def test_unchanged_snapshot_is_reused_without_duplicate_metadata(tmp_path: Path)
         ledger.close()
 
 
+def test_repeated_symbol_calls_persist_as_one_graph_edge(tmp_path: Path) -> None:
+    root = tmp_path / "repository"
+    root.mkdir()
+    (root / "module.py").write_text(
+        "def helper():\n"
+        "    return 1\n\n"
+        "def main():\n"
+        "    return helper() + helper()\n",
+        encoding="utf-8",
+    )
+    ledger, _repository, indexer = _indexer(tmp_path)
+    try:
+        result = indexer.build(root)
+        with database_connection(ledger.database_path) as connection:
+            call_edges = connection.execute(
+                """
+                SELECT source_id, target_id, COUNT(*) AS count
+                FROM edges
+                WHERE snapshot_id = ? AND edge_kind = 'calls'
+                GROUP BY source_id, target_id
+                """,
+                (result.snapshot.snapshot_id,),
+            ).fetchall()
+        assert len(call_edges) == 1
+        assert call_edges[0]["count"] == 1
+        assert result.edge_count == 1
+    finally:
+        ledger.close()
+
+
 def test_non_git_repository_gets_deterministic_content_snapshot(tmp_path: Path) -> None:
     root = tmp_path / "plain"
     root.mkdir()

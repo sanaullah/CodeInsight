@@ -6,6 +6,19 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+VERSION_STRING = "v0.1.0-alpha"
+
+
+def load_environment(env_file: str | Path | None = None) -> bool:
+    """Load a local .env without overriding process environment values."""
+
+    path = Path(env_file) if env_file else Path(__file__).resolve().parents[1] / ".env"
+    if not path.is_file():
+        return False
+    return bool(load_dotenv(path, override=False))
+
 
 def _positive_int(name: str, default: int) -> int:
     raw_value = os.getenv(name)

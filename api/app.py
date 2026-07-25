@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from api.config import ApiSettings
+from api.config import VERSION_STRING, ApiSettings, load_environment
 from api.models import (
     AnalysisAccepted,
     AnalysisIntelligence,
@@ -21,8 +21,6 @@ from api.models import (
     RecoveryResponse,
 )
 from application.analysis_service import AnalysisService
-from infrastructure.utils.config.env_loader import load_env
-from infrastructure.utils.version import VERSION_STRING
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 FRONTEND_ROOT = PROJECT_ROOT / "web"
@@ -59,7 +57,7 @@ def _language_capabilities() -> list[LanguageCapability]:
 
 
 def create_app(service: AnalysisService | None = None) -> FastAPI:
-    load_env()
+    load_environment()
     settings = ApiSettings.from_environment()
     analysis_service = service or AnalysisService(
         database_path=settings.database_path,

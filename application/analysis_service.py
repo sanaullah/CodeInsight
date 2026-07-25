@@ -47,37 +47,6 @@ class AnalysisExecutor(Protocol):
     ) -> dict[str, Any]: ...
 
 
-class SwarmAnalysisExecutor:
-    """Inactive compatibility adapter retained until the final removal gate."""
-
-    async def execute(
-        self, run_id: str, request: AnalysisRequest, event_sink: EventSink
-    ) -> dict[str, Any]:
-        del run_id
-        from analysis.agents.swarm_analysis_orchestrator import SwarmAnalysisOrchestrator
-
-        orchestrator = SwarmAnalysisOrchestrator(
-            model_name=request.model_name,
-            auto_detect_languages=request.auto_detect_languages,
-            file_extensions=request.file_extensions,
-        )
-        return await orchestrator.analyze(
-            project_path=request.project_path,
-            goal=request.goal,
-            model_name=request.model_name,
-            max_agents=request.max_agents,
-            stream_callback=event_sink,
-            auto_detect_languages=request.auto_detect_languages,
-            file_extensions=request.file_extensions,
-            selected_directories=request.selected_directories,
-            max_tokens_per_chunk=request.max_tokens_per_chunk,
-            enable_chunking=request.enable_chunking,
-            chunking_strategy=request.chunking_strategy,
-            enable_dynamic_file_selection=request.enable_dynamic_file_selection,
-            enable_tool_calling=request.enable_tool_calling,
-        )
-
-
 class NativeAnalysisExecutor:
     """Compose the durable index, scheduler, specialist, and coverage pipeline."""
 
@@ -430,7 +399,7 @@ class AnalysisService:
                 record = ledger.get_run(run_id)
                 if record is None:
                     return
-                request = AnalysisRequest.model_validate(record["request"])
+                request = AnalysisRequest.from_persisted(record["request"])
 
                 def event_sink(event_type: str, data: dict[str, Any]) -> None:
                     ledger.append_event(run_id, event_type, data)
@@ -472,7 +441,11 @@ class AnalysisService:
 
     @staticmethod
     def _to_model(record: dict[str, Any]) -> AnalysisRun:
-        return AnalysisRun.model_validate(record)
+        normalized = {
+            **record,
+            "request": AnalysisRequest.from_persisted(record["request"]),
+        }
+        return AnalysisRun.model_validate(normalized)
 
 
 def _synthesize(

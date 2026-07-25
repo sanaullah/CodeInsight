@@ -4,12 +4,11 @@ Language configuration and definitions for multi-language support.
 Provides centralized language definitions, file extension mappings, and language-specific metadata.
 """
 
-from enum import Enum
-from typing import Dict, List, Set, Optional
 from dataclasses import dataclass
+from enum import StrEnum
 
 
-class Language(str, Enum):
+class Language(StrEnum):
     """Supported programming languages."""
 
     PYTHON = "python"
@@ -49,16 +48,16 @@ class LanguageMetadata:
     """Metadata for a programming language."""
 
     name: str
-    extensions: List[str]
+    extensions: list[str]
     parser_support: bool
-    tree_sitter_grammar: Optional[str] = None
-    ignore_patterns: Optional[List[str]] = None
-    dependency_files: Optional[List[str]] = None
-    comment_style: Optional[str] = None  # "//", "#", "/*", etc.
+    tree_sitter_grammar: str | None = None
+    ignore_patterns: list[str] | None = None
+    dependency_files: list[str] | None = None
+    comment_style: str | None = None  # "//", "#", "/*", etc.
 
 
 # Language to file extension mapping
-LANGUAGE_EXTENSIONS: Dict[Language, List[str]] = {
+LANGUAGE_EXTENSIONS: dict[Language, list[str]] = {
     Language.PYTHON: [".py", ".pyw", ".pyi"],
     Language.JAVASCRIPT: [".js", ".jsx", ".mjs", ".cjs"],
     Language.TYPESCRIPT: [".ts", ".tsx"],
@@ -92,14 +91,14 @@ LANGUAGE_EXTENSIONS: Dict[Language, List[str]] = {
 }
 
 # Reverse mapping: extension to language
-EXTENSION_TO_LANGUAGE: Dict[str, Language] = {}
+EXTENSION_TO_LANGUAGE: dict[str, Language] = {}
 for lang, exts in LANGUAGE_EXTENSIONS.items():
     for ext in exts:
         EXTENSION_TO_LANGUAGE[ext.lower()] = lang
 
 
 # Language metadata
-LANGUAGE_METADATA: Dict[Language, LanguageMetadata] = {
+LANGUAGE_METADATA: dict[Language, LanguageMetadata] = {
     Language.PYTHON: LanguageMetadata(
         name="Python",
         extensions=[".py", ".pyw", ".pyi"],
@@ -245,7 +244,7 @@ LANGUAGE_METADATA: Dict[Language, LanguageMetadata] = {
 }
 
 
-def get_extensions_for_languages(languages: List[str]) -> List[str]:
+def get_extensions_for_languages(languages: list[str]) -> list[str]:
     """
     Get file extensions for a list of language names.
 
@@ -264,10 +263,10 @@ def get_extensions_for_languages(languages: List[str]) -> List[str]:
         except ValueError:
             # Unknown language, skip
             continue
-    return list(set(extensions))  # Remove duplicates
+    return sorted(set(extensions))
 
 
-def get_language_for_extension(extension: str) -> Optional[Language]:
+def get_language_for_extension(extension: str) -> Language | None:
     """
     Get language for a file extension.
 
@@ -280,7 +279,7 @@ def get_language_for_extension(extension: str) -> Optional[Language]:
     return EXTENSION_TO_LANGUAGE.get(extension.lower())
 
 
-def get_supported_languages() -> List[str]:
+def get_supported_languages() -> list[str]:
     """
     Get list of all supported language names.
 
@@ -290,7 +289,7 @@ def get_supported_languages() -> List[str]:
     return [lang.value for lang in Language]
 
 
-def get_language_metadata(language: str) -> Optional[LanguageMetadata]:
+def get_language_metadata(language: str) -> LanguageMetadata | None:
     """
     Get metadata for a language.
 
@@ -307,7 +306,7 @@ def get_language_metadata(language: str) -> Optional[LanguageMetadata]:
         return None
 
 
-def get_all_dependency_file_patterns() -> List[str]:
+def get_all_dependency_file_patterns() -> list[str]:
     """
     Get all dependency file patterns across all languages.
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import sys
 import time
 from collections.abc import AsyncIterator
 from concurrent.futures import ThreadPoolExecutor
@@ -32,13 +31,16 @@ def _role() -> RoleSpec:
     )
 
 
-def test_native_workflow_import_does_not_load_legacy_framework_modules() -> None:
+def test_native_workflow_exports_only_native_scheduler_contracts() -> None:
     import workflow
 
     assert workflow.NativeTaskScheduler is NativeTaskScheduler
-    assert "workflow.nodes" not in sys.modules
-    with pytest.raises(AttributeError):
-        workflow.__getattr__("not_an_export")
+    assert workflow.__all__ == [
+        "NativeTaskScheduler",
+        "PermanentTaskError",
+        "TaskContext",
+        "TaskResult",
+    ]
 
 
 def _task(

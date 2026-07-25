@@ -1,32 +1,23 @@
-"""
-Project scanning utilities for CodeLumen v3.
-"""
+"""Language capability metadata used by the native index and API."""
 
-from .project_scanner import ProjectScanner, FileInfo
-from .file_reader import read_file_with_encoding
 from .language_config import (
+    LANGUAGE_EXTENSIONS,
     Language,
     LanguageMetadata,
+    get_all_dependency_file_patterns,
     get_extensions_for_languages,
     get_language_for_extension,
-    get_supported_languages,
     get_language_metadata,
-    get_all_dependency_file_patterns,
+    get_supported_languages,
 )
-from .language_detector import LanguageDetector
-from .scanner_factory import create_project_scanner
 
 __all__ = [
-    "ProjectScanner",
-    "FileInfo",
-    "read_file_with_encoding",
+    "LANGUAGE_EXTENSIONS",
     "Language",
     "LanguageMetadata",
+    "get_all_dependency_file_patterns",
     "get_extensions_for_languages",
     "get_language_for_extension",
-    "get_supported_languages",
     "get_language_metadata",
-    "get_all_dependency_file_patterns",
-    "LanguageDetector",
-    "create_project_scanner",
+    "get_supported_languages",
 ]

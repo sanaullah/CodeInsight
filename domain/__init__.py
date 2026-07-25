@@ -1,17 +1,5 @@
-"""Framework-neutral domain models."""
+"""Framework-neutral native workflow contracts."""
 
-from .architecture import ArchitectureModel, DataFlow, Dependency, DesignPattern, Endpoint, Module
-from .collaboration import (
-    Conflict,
-    ConflictResolution,
-    ConflictResolutionStrategy,
-    ConflictSeverity,
-    ConflictType,
-    CoordinationRequest,
-    CoordinationType,
-    Knowledge,
-    KnowledgeType,
-)
 from .contracts import (
     AnalysisMode,
     AnalysisTask,
@@ -27,41 +15,19 @@ from .contracts import (
     TaskStatus,
     WavePlan,
 )
-from .experience import Experience, Outcome, PerformanceMetrics, SuccessLevel
-from .skills import SwarmSkill
 
 __all__ = [
-    "ArchitectureModel",
     "AnalysisMode",
     "AnalysisTask",
     "CanonicalFinding",
-    "Conflict",
-    "ConflictResolution",
-    "ConflictResolutionStrategy",
-    "ConflictSeverity",
-    "ConflictType",
-    "CoordinationRequest",
-    "CoordinationType",
     "CoverageAssessment",
-    "DataFlow",
-    "Dependency",
-    "DesignPattern",
-    "Endpoint",
     "EvidenceRef",
-    "Experience",
     "FindingCandidate",
     "FindingVerdict",
-    "Knowledge",
-    "KnowledgeType",
-    "Module",
-    "Outcome",
-    "PerformanceMetrics",
     "RepositorySnapshot",
     "RoleSpec",
     "RunBudget",
     "RunStage",
-    "SuccessLevel",
-    "SwarmSkill",
     "TaskStatus",
     "WavePlan",
 ]

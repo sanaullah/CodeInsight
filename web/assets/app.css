@@ -75,17 +75,6 @@ input, textarea, select { width: 100%; color: var(--ink); border: 1px solid var(
 textarea { resize: vertical; line-height: 1.5; }
 input:focus, textarea:focus, select:focus { border-color: rgba(14,116,103,.55); box-shadow: 0 0 0 4px rgba(14,116,103,.08); background: white; }
 .field-grid { display: grid; grid-template-columns: 1.25fr .75fr; gap: 14px; }
-.option-row { padding: 5px 0 2px; }
-.switch-line { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; cursor: pointer; }
-.switch-line input { position: absolute; opacity: 0; pointer-events: none; }
-.switch-line > span:last-child { margin: 0; }
-.switch-line strong, .switch-line small { display: block; }
-.switch-line strong { font-size: 12px; }
-.switch-line small { margin-top: 3px; }
-.switch { position: relative; width: 36px; height: 21px; border-radius: 99px; background: #c9ceca; transition: background .18s; }
-.switch::after { content: ""; position: absolute; width: 15px; height: 15px; left: 3px; top: 3px; border-radius: 50%; background: white; transition: transform .18s; box-shadow: 0 2px 5px rgba(0,0,0,.18); }
-.switch-line input:checked + .switch { background: var(--teal); }
-.switch-line input:checked + .switch::after { transform: translateX(15px); }
 details { margin-bottom: 20px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 summary { padding: 15px 0; color: var(--muted); font-size: 12px; font-weight: 750; cursor: pointer; }
 .detail-grid { padding-top: 8px; }

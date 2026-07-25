@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Any, Literal
+from typing import Any, ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -28,26 +28,40 @@ class AnalysisStatus(StrEnum):
 class AnalysisRequest(BaseModel):
     """A bounded request for the native durable analysis engine."""
 
-    model_config = ConfigDict(str_strip_whitespace=True)
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    RETIRED_FIELDS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "auto_detect_languages",
+            "chunking_strategy",
+            "enable_chunking",
+            "enable_dynamic_file_selection",
+            "enable_tool_calling",
+            "max_tokens_per_chunk",
+        }
+    )
 
     project_path: str = Field(min_length=1, max_length=4096)
     goal: str | None = Field(default=None, max_length=4000)
     model_name: str | None = Field(default=None, max_length=300)
     max_agents: int = Field(default=4, ge=1, le=12)
-    max_tokens_per_chunk: int = Field(default=50_000, ge=4_000, le=200_000)
-    enable_chunking: bool = True
-    chunking_strategy: Literal["NONE", "STANDARD", "AGGRESSIVE"] = "STANDARD"
-    auto_detect_languages: bool = True
     file_extensions: list[str] | None = Field(default=None, max_length=50)
     selected_directories: list[str] | None = Field(default=None, max_length=100)
-    enable_dynamic_file_selection: bool = True
-    enable_tool_calling: bool = False
     mode: AnalysisMode = AnalysisMode.DEEP
     max_waves: int = Field(default=2, ge=1, le=10)
     max_tasks: int = Field(default=100, ge=1, le=500)
     max_total_tokens: int = Field(default=1_000_000, ge=1)
     max_cost_usd: float = Field(default=25, ge=0)
     max_elapsed_seconds: int = Field(default=3_600, ge=1)
+
+    @classmethod
+    def from_persisted(cls, value: dict[str, Any]) -> AnalysisRequest:
+        """Read pre-native ledger requests without reopening the public API."""
+
+        sanitized = {
+            key: item for key, item in value.items() if key not in cls.RETIRED_FIELDS
+        }
+        return cls.model_validate(sanitized)
 
     def run_budget(self) -> RunBudget:
         return RunBudget(

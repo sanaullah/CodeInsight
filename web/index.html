@@ -100,39 +100,29 @@
             </label>
           </div>
 
-          <div class="option-row">
-            <label class="switch-line">
-              <input id="dynamic-files" type="checkbox" checked />
-              <span class="switch"></span>
-              <span>
-                <strong>Focused file selection</strong>
-                <small>Let each specialist request relevant files.</small>
-              </span>
-            </label>
-            <label class="switch-line">
-              <input id="tool-calling" type="checkbox" />
-              <span class="switch"></span>
-              <span>
-                <strong>Read-only file tools</strong>
-                <small>Off by default while safeguards mature.</small>
-              </span>
-            </label>
-          </div>
-
           <details>
-            <summary>Analysis limits</summary>
+            <summary>Mode and durable budget</summary>
             <div class="field-grid detail-grid">
               <label>
-                <span>Chunk strategy</span>
-                <select id="chunking-strategy">
-                  <option value="AGGRESSIVE">Aggressive — smaller chunks</option>
-                  <option value="STANDARD" selected>Standard — balanced</option>
-                  <option value="NONE">No chunking</option>
+                <span>Analysis mode</span>
+                <select id="analysis-mode">
+                  <option value="quick">Quick</option>
+                  <option value="deep" selected>Deep</option>
+                  <option value="security">Security</option>
+                  <option value="change_set">Change set</option>
                 </select>
               </label>
               <label>
-                <span>Tokens per chunk</span>
-                <input id="max-tokens" type="number" min="4000" max="200000" value="50000" />
+                <span>Maximum waves</span>
+                <input id="max-waves" type="number" min="1" max="10" value="2" />
+              </label>
+              <label>
+                <span>Maximum tasks</span>
+                <input id="max-tasks" type="number" min="1" max="500" value="100" />
+              </label>
+              <label>
+                <span>Total model tokens</span>
+                <input id="max-total-tokens" type="number" min="1" value="1000000" />
               </label>
             </div>
           </details>

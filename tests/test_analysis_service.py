@@ -5,15 +5,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from pydantic import ValidationError
 
-from api.analysis_service import AnalysisService as LegacyAnalysisService
 from api.models import AnalysisRequest, AnalysisStatus
 from application.analysis_service import AnalysisService, EventSink
 from infrastructure.db.run_ledger import SqliteRunLedger
-
-
-def test_legacy_analysis_service_import_is_compatible() -> None:
-    assert LegacyAnalysisService is AnalysisService
 
 
 class FakeExecutor:
@@ -188,3 +184,21 @@ def test_request_maps_native_budget_and_mode() -> None:
     assert budget.max_tokens == 12_000
     assert budget.max_cost_usd == 2.5
     assert budget.max_elapsed_seconds == 90
+
+
+def test_public_request_rejects_retired_legacy_controls() -> None:
+    with pytest.raises(ValidationError, match="enable_chunking"):
+        AnalysisRequest(project_path=".", enable_chunking=True)
+
+
+def test_persisted_request_discards_retired_fields_for_ledger_compatibility() -> None:
+    request = AnalysisRequest.from_persisted(
+        {
+            "project_path": ".",
+            "enable_chunking": True,
+            "chunking_strategy": "STANDARD",
+            "max_tokens_per_chunk": 50_000,
+        }
+    )
+    assert request.project_path == "."
+    assert "enable_chunking" not in request.model_dump()
