@@ -79,6 +79,55 @@ def test_semantic_architecture_api_is_bounded_and_traceable(
         assert detail.json()["provenance"]
         assert isinstance(detail.json()["memberships"][0]["provenance"], dict)
         assert "file_metadata" not in detail.json()["memberships"][0]
+        assert detail.json()["annotation"] is None
+
+        annotation_url = (
+            f"/api/v1/snapshots/{snapshot_id}/semantic-components/"
+            f"{service['component_id']}/annotation"
+        )
+        assert (
+            client.put(
+                annotation_url,
+                json={"note": "   ", "expected_version": 0},
+            ).status_code
+            == 422
+        )
+        created = client.put(
+            annotation_url,
+            json={"note": "Review ownership boundary.", "expected_version": 0},
+        )
+        assert created.status_code == 200
+        assert created.json()["version"] == 1
+        assert created.json()["note"] == "Review ownership boundary."
+        conflict = client.put(
+            annotation_url,
+            json={"note": "Stale edit", "expected_version": 0},
+        )
+        assert conflict.status_code == 409
+        updated = client.put(
+            annotation_url,
+            json={"note": "Ownership boundary verified.", "expected_version": 1},
+        )
+        assert updated.status_code == 200
+        assert updated.json()["version"] == 2
+        annotated_detail = client.get(
+            f"/api/v1/snapshots/{snapshot_id}/semantic-components/"
+            f"{service['component_id']}"
+        )
+        assert annotated_detail.json()["annotation"]["note"] == (
+            "Ownership boundary verified."
+        )
+        with database_connection(database_path) as connection:
+            events = connection.execute(
+                """
+                SELECT version, note FROM architecture_component_annotation_events
+                ORDER BY version
+                """,
+            ).fetchall()
+        assert [(row["version"], row["note"]) for row in events] == [
+            (1, "Review ownership boundary."),
+            (2, "Ownership boundary verified."),
+        ]
 
         trace = client.get(
             f"/api/v1/snapshots/{snapshot_id}/semantic-trace",
@@ -201,6 +250,13 @@ def test_semantic_architecture_api_reports_missing_and_rejects_unbounded_limits(
         assert (
             client.get(
                 f"/api/v1/snapshots/{snapshot_id}/semantic-components/missing"
+            ).status_code
+            == 404
+        )
+        assert (
+            client.put(
+                f"/api/v1/snapshots/{snapshot_id}/semantic-components/missing/annotation",
+                json={"note": "Missing", "expected_version": 0},
             ).status_code
             == 404
         )

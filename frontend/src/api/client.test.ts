@@ -50,6 +50,33 @@ describe("apiClient", () => {
     );
   });
 
+  it("updates a snapshot component annotation with optimistic versioning", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      response({
+        annotation_id: "annotation-1",
+        snapshot_id: "snapshot/one",
+        component_id: "component one",
+        note: "Owner verified",
+        version: 2,
+        actor: "local-user",
+        created_at: "2026-07-25T12:00:00Z",
+        updated_at: "2026-07-25T12:01:00Z",
+      }),
+    );
+
+    await apiClient.updateComponentAnnotation("snapshot/one", "component one", {
+      note: "Owner verified",
+      expected_version: 1,
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/v1/snapshots/snapshot%2Fone/semantic-components/component%20one/annotation",
+      expect.objectContaining({
+        method: "PUT",
+        body: JSON.stringify({ note: "Owner verified", expected_version: 1 }),
+      }),
+    );
+  });
+
   it("maps list, intelligence, and recovery endpoints", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => response([]));
 

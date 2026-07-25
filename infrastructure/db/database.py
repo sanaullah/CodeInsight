@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 6
+SCHEMA_VERSION = 8
 DEFAULT_BUSY_TIMEOUT_MS = 5_000
 
 _MIGRATION_1 = (
@@ -637,6 +637,114 @@ _MIGRATION_6 = (
     "ON specialist_prompt_artifacts(run_id, created_at)",
 )
 
+_MIGRATION_7 = (
+    """
+    CREATE TABLE architecture_component_annotations (
+        annotation_id TEXT PRIMARY KEY,
+        snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id)
+            ON DELETE CASCADE,
+        component_id TEXT NOT NULL REFERENCES semantic_components(component_id)
+            ON DELETE CASCADE,
+        note TEXT NOT NULL CHECK (length(note) BETWEEN 1 AND 4000),
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+        actor TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(snapshot_id, component_id)
+    )
+    """,
+    """
+    CREATE TABLE architecture_component_annotation_events (
+        annotation_event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        annotation_id TEXT NOT NULL
+            REFERENCES architecture_component_annotations(annotation_id)
+            ON DELETE CASCADE,
+        snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id)
+            ON DELETE CASCADE,
+        component_id TEXT NOT NULL REFERENCES semantic_components(component_id)
+            ON DELETE CASCADE,
+        note TEXT NOT NULL CHECK (length(note) BETWEEN 1 AND 4000),
+        version INTEGER NOT NULL CHECK (version >= 1),
+        actor TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX idx_architecture_annotations_snapshot "
+    "ON architecture_component_annotations(snapshot_id, updated_at)",
+    "CREATE INDEX idx_architecture_annotation_events_annotation "
+    "ON architecture_component_annotation_events(annotation_id, version)",
+)
+
+_MIGRATION_8 = (
+    "DROP INDEX idx_architecture_annotations_snapshot",
+    "DROP INDEX idx_architecture_annotation_events_annotation",
+    "ALTER TABLE architecture_component_annotation_events "
+    "RENAME TO architecture_component_annotation_events_v7",
+    "ALTER TABLE architecture_component_annotations "
+    "RENAME TO architecture_component_annotations_v7",
+    """
+    CREATE TABLE architecture_component_annotations (
+        annotation_id TEXT PRIMARY KEY,
+        snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id)
+            ON DELETE CASCADE,
+        component_stable_key TEXT NOT NULL,
+        note TEXT NOT NULL CHECK (length(trim(note)) BETWEEN 1 AND 4000),
+        version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+        actor TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(snapshot_id, component_stable_key)
+    )
+    """,
+    """
+    INSERT INTO architecture_component_annotations(
+        annotation_id, snapshot_id, component_stable_key, note, version,
+        actor, created_at, updated_at
+    )
+    SELECT annotations.annotation_id, annotations.snapshot_id,
+           components.stable_key, annotations.note, annotations.version,
+           annotations.actor, annotations.created_at, annotations.updated_at
+    FROM architecture_component_annotations_v7 AS annotations
+    JOIN semantic_components AS components
+      ON components.snapshot_id = annotations.snapshot_id
+     AND components.component_id = annotations.component_id
+    """,
+    """
+    CREATE TABLE architecture_component_annotation_events (
+        annotation_event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        annotation_id TEXT NOT NULL
+            REFERENCES architecture_component_annotations(annotation_id)
+            ON DELETE CASCADE,
+        snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id)
+            ON DELETE CASCADE,
+        component_stable_key TEXT NOT NULL,
+        note TEXT NOT NULL CHECK (length(trim(note)) BETWEEN 1 AND 4000),
+        version INTEGER NOT NULL CHECK (version >= 1),
+        actor TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    INSERT INTO architecture_component_annotation_events(
+        annotation_event_id, annotation_id, snapshot_id,
+        component_stable_key, note, version, actor, created_at
+    )
+    SELECT events.annotation_event_id, events.annotation_id, events.snapshot_id,
+           components.stable_key, events.note, events.version,
+           events.actor, events.created_at
+    FROM architecture_component_annotation_events_v7 AS events
+    JOIN semantic_components AS components
+      ON components.snapshot_id = events.snapshot_id
+     AND components.component_id = events.component_id
+    """,
+    "DROP TABLE architecture_component_annotation_events_v7",
+    "DROP TABLE architecture_component_annotations_v7",
+    "CREATE INDEX idx_architecture_annotations_snapshot "
+    "ON architecture_component_annotations(snapshot_id, updated_at)",
+    "CREATE INDEX idx_architecture_annotation_events_annotation "
+    "ON architecture_component_annotation_events(annotation_id, version)",
+)
+
 MIGRATIONS: dict[int, tuple[str, tuple[str, ...]]] = {
     1: ("initial durable application ledger", _MIGRATION_1),
     2: ("durable finding review lifecycle", _MIGRATION_2),
@@ -644,6 +752,8 @@ MIGRATIONS: dict[int, tuple[str, tuple[str, ...]]] = {
     4: ("evidence-derived semantic architecture ledger", _MIGRATION_4),
     5: ("semantic extractor projection version state", _MIGRATION_5),
     6: ("immutable redacted specialist prompt artifacts", _MIGRATION_6),
+    7: ("durable architecture component annotations", _MIGRATION_7),
+    8: ("stable architecture annotation identity", _MIGRATION_8),
 }
 
 

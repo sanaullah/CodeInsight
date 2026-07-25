@@ -33,6 +33,9 @@ from infrastructure.artifacts.store import FilesystemArtifactStore
 from infrastructure.db.analysis_repository import SqliteAnalysisRepository
 from infrastructure.db.architecture_repository import SqliteArchitectureRepository
 from infrastructure.db.artifact_repository import SqliteArtifactRepository
+from infrastructure.db.component_annotation_repository import (
+    SqliteComponentAnnotationRepository,
+)
 from infrastructure.db.database import checkpoint_database
 from infrastructure.db.finding_repository import SqliteFindingRepository
 from infrastructure.db.history_repository import SqliteHistoryRepository
@@ -429,6 +432,23 @@ class AnalysisService:
             SqliteSemanticArchitectureQuery(self._get_ledger()).component,
             snapshot_id,
             component_id,
+        )
+
+    async def update_component_annotation(
+        self,
+        snapshot_id: str,
+        component_id: str,
+        *,
+        note: str,
+        expected_version: int,
+    ) -> dict[str, Any] | None:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteComponentAnnotationRepository(self._get_ledger()).upsert,
+            snapshot_id,
+            component_id,
+            note=note,
+            expected_version=expected_version,
         )
 
     async def semantic_architecture_trace(

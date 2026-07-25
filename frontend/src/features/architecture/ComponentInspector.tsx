@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { SemanticComponent, SemanticComponentDetail } from "../../api/contracts";
 import { componentLabel } from "./model";
 
@@ -8,6 +9,9 @@ export interface ComponentInspectorProps {
   error?: string | null;
   onFocus?: (component: SemanticComponent) => void;
   onOpenFinding?: (findingId: string) => void;
+  onSaveAnnotation?: (note: string, expectedVersion: number) => Promise<void>;
+  annotationSaving?: boolean;
+  annotationError?: string | null;
 }
 
 function metadataEntries(metadata: Record<string, unknown> | null | undefined) {
@@ -29,7 +33,16 @@ export function ComponentInspector({
   error = null,
   onFocus,
   onOpenFinding,
+  onSaveAnnotation,
+  annotationSaving = false,
+  annotationError = null,
 }: ComponentInspectorProps) {
+  const [annotationDraft, setAnnotationDraft] = useState("");
+
+  useEffect(() => {
+    setAnnotationDraft(detail?.annotation?.note ?? "");
+  }, [detail?.annotation?.note]);
+
   return (
     <aside aria-label="Component inspector" className="architecture-inspector">
       <div className="architecture-section-heading">
@@ -125,6 +138,42 @@ export function ComponentInspector({
                   secondary: `${resource.resource_kind} / ${resource.completeness}`,
                 }))}
               />
+              <section className="architecture-inspector-section architecture-annotation">
+                <h3>Component annotation</h3>
+                <p className="architecture-muted">
+                  Local durable note pinned to this immutable snapshot component.
+                </p>
+                <textarea
+                  aria-label="Component annotation"
+                  maxLength={4000}
+                  onChange={(event) => setAnnotationDraft(event.target.value)}
+                  placeholder="Add review context, ownership notes, or follow-up guidance"
+                  rows={4}
+                  value={annotationDraft}
+                />
+                <div>
+                  <small>
+                    {detail.annotation
+                      ? `Version ${detail.annotation.version} · ${detail.annotation.actor}`
+                      : "No annotation saved"}
+                  </small>
+                  <button
+                    className="button button-secondary"
+                    disabled={!annotationDraft.trim() || annotationSaving || !onSaveAnnotation}
+                    onClick={() =>
+                      void onSaveAnnotation?.(annotationDraft, detail.annotation?.version ?? 0)
+                    }
+                    type="button"
+                  >
+                    {annotationSaving ? "Saving…" : "Save annotation"}
+                  </button>
+                </div>
+                {annotationError ? (
+                  <p className="architecture-inline-error" role="alert">
+                    {annotationError}
+                  </p>
+                ) : null}
+              </section>
               <section className="architecture-inspector-section">
                 <h3>Correlated findings ({detail.findings.length})</h3>
                 {detail.findings.length ? (

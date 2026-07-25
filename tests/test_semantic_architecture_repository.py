@@ -22,6 +22,9 @@ from domain.architecture import (
 )
 from domain.contracts import RepositorySnapshot
 from infrastructure.artifacts.store import FilesystemArtifactStore
+from infrastructure.db.component_annotation_repository import (
+    SqliteComponentAnnotationRepository,
+)
 from infrastructure.db.database import SCHEMA_VERSION, database_connection
 from infrastructure.db.run_ledger import SqliteRunLedger
 from infrastructure.db.semantic_architecture_repository import (
@@ -195,7 +198,7 @@ def test_semantic_schema_is_canonical_and_indexed(tmp_path: Path) -> None:
                 "SELECT name FROM sqlite_master WHERE type = 'index'"
             )
         }
-    assert version == SCHEMA_VERSION == 6
+    assert version == SCHEMA_VERSION == 8
     assert {
         "semantic_components",
         "semantic_memberships",
@@ -206,9 +209,12 @@ def test_semantic_schema_is_canonical_and_indexed(tmp_path: Path) -> None:
         "semantic_relations",
         "semantic_provenance",
         "semantic_finding_links",
+        "architecture_component_annotations",
+        "architecture_component_annotation_events",
     } <= tables
     assert "idx_semantic_relations_source" in indexes
     assert "idx_semantic_provenance_entity" in indexes
+    assert "idx_architecture_annotations_snapshot" in indexes
 
 
 def test_projection_replace_is_atomic_idempotent_and_queryable(tmp_path: Path) -> None:
@@ -217,7 +223,22 @@ def test_projection_replace_is_atomic_idempotent_and_queryable(tmp_path: Path) -
     projection = _projection(snapshot_id, file_id)
 
     assert repository.replace(projection)["components"] == 2
+    annotations = SqliteComponentAnnotationRepository(ledger)
+    annotation = annotations.upsert(
+        snapshot_id,
+        "component-service",
+        note="Preserve this local context.",
+        expected_version=0,
+    )
+    assert annotation is not None
     assert repository.replace(projection) == repository.projection_counts(snapshot_id)
+    preserved = annotations.get(snapshot_id, "component-service")
+    assert preserved is not None
+    assert preserved["note"] == "Preserve this local context."
+    with database_connection(ledger.database_path) as connection:
+        assert connection.execute(
+            "SELECT COUNT(*) FROM architecture_component_annotation_events"
+        ).fetchone()[0] == 1
     assert repository.projection_state(snapshot_id)["extractor_version"] == "semantic-v1"
     component = repository.component("component-service")
     assert component is not None

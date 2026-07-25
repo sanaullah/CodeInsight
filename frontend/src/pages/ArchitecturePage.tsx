@@ -91,6 +91,8 @@ export function ArchitecturePage() {
   const [traceLoading, setTraceLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [detailError, setDetailError] = useState<string | null>(null);
+  const [annotationSaving, setAnnotationSaving] = useState(false);
+  const [annotationError, setAnnotationError] = useState<string | null>(null);
   const [findingError, setFindingError] = useState<string | null>(null);
   const [traceError, setTraceError] = useState<string | null>(null);
 
@@ -227,6 +229,7 @@ export function ArchitecturePage() {
   }, [compareSnapshotId, componentKinds, relationKinds, snapshotId]);
 
   useEffect(() => {
+    setAnnotationError(null);
     if (!snapshotId || !selectedId) {
       setDetail(null);
       return;
@@ -283,6 +286,25 @@ export function ArchitecturePage() {
       setFindingError(reason instanceof Error ? reason.message : "Unable to load finding");
     } finally {
       setFindingLoading(false);
+    }
+  }
+
+  async function saveAnnotation(note: string, expectedVersion: number) {
+    if (!snapshotId || !selectedId) return;
+    setAnnotationSaving(true);
+    setAnnotationError(null);
+    try {
+      const annotation = await apiClient.updateComponentAnnotation(snapshotId, selectedId, {
+        note,
+        expected_version: expectedVersion,
+      });
+      setDetail((current) => (current ? { ...current, annotation } : current));
+    } catch (reason) {
+      setAnnotationError(
+        reason instanceof Error ? reason.message : "Unable to save component annotation",
+      );
+    } finally {
+      setAnnotationSaving(false);
     }
   }
 
@@ -560,12 +582,16 @@ export function ArchitecturePage() {
           <ArchitectureWorkspace
             inspector={
               <ComponentInspector
+                annotationError={annotationError}
+                annotationSaving={annotationSaving}
                 component={selected}
                 detail={detail}
                 error={detailError}
+                key={selectedId}
                 loading={detailLoading}
                 onFocus={focusComponent}
                 onOpenFinding={(id) => void openFinding(id)}
+                onSaveAnnotation={saveAnnotation}
               />
             }
             layers={

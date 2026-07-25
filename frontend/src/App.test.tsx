@@ -37,6 +37,9 @@ beforeEach(() => {
   vi.spyOn(apiClient, "semanticSummary").mockRejectedValue(new Error("Snapshot not selected"));
   vi.spyOn(apiClient, "semanticArchitecture").mockRejectedValue(new Error("Snapshot not selected"));
   vi.spyOn(apiClient, "semanticComponent").mockRejectedValue(new Error("Component not selected"));
+  vi.spyOn(apiClient, "updateComponentAnnotation").mockRejectedValue(
+    new Error("Annotation not requested"),
+  );
   vi.spyOn(apiClient, "semanticTrace").mockRejectedValue(new Error("Trace not selected"));
   vi.spyOn(apiClient, "history").mockResolvedValue({ items: [], next_cursor: null });
   vi.spyOn(apiClient, "historyTrends").mockResolvedValue({
@@ -554,6 +557,7 @@ describe("application shell", () => {
           component_id: "service-orders",
         },
       ],
+      annotation: null,
       evidence_truncated: false,
       limits: { detail_row_limit: 250 },
     });
@@ -567,6 +571,16 @@ describe("application shell", () => {
       provenance: [],
       evidence_truncated: false,
       max_hops: 8,
+    });
+    vi.mocked(apiClient.updateComponentAnnotation).mockResolvedValue({
+      annotation_id: "annotation-1",
+      snapshot_id: "snapshot-1",
+      component_id: "service-orders",
+      note: "Owner verified",
+      version: 1,
+      actor: "local-user",
+      created_at: "2026-07-25T12:01:00Z",
+      updated_at: "2026-07-25T12:01:00Z",
     });
     vi.mocked(apiClient.finding).mockResolvedValue({
       finding_id: "finding-architecture",
@@ -607,6 +621,14 @@ describe("application shell", () => {
     expect(screen.getByText(/partial projection/i)).toBeInTheDocument();
     await user.click(screen.getAllByRole("button", { name: /Orders service/i })[0]);
     expect(await screen.findByText("app/orders.py")).toBeInTheDocument();
+    await user.type(screen.getByLabelText("Component annotation"), "Owner verified");
+    await user.click(screen.getByRole("button", { name: "Save annotation" }));
+    expect(apiClient.updateComponentAnnotation).toHaveBeenCalledWith(
+      "snapshot-1",
+      "service-orders",
+      { note: "Owner verified", expected_version: 0 },
+    );
+    expect(await screen.findByText(/Version 1 · local-user/)).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Unsafe order query/i }));
     expect(await screen.findByRole("dialog", { name: "Unsafe order query" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Export finding" })).toHaveAttribute(
@@ -637,9 +659,7 @@ describe("application shell", () => {
     ).toBeInTheDocument();
     expect(screen.getByText(/not a runtime blast-radius claim/i)).toBeInTheDocument();
     await user.selectOptions(screen.getByLabelText("Compare against"), "snapshot-0");
-    expect(
-      await screen.findByRole("heading", { name: "Snapshot comparison" }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Snapshot comparison" })).toBeInTheDocument();
     expect(window.location.search).toContain("compare=snapshot-0");
     const accessibility = await axe.run(view.container, {
       rules: { "color-contrast": { enabled: false } },

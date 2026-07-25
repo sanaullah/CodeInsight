@@ -622,6 +622,24 @@
   padding-top: 1rem;
 }
 
+.architecture-annotation textarea {
+  width: 100%;
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.architecture-annotation > div {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 0.5rem;
+}
+
+.architecture-annotation small {
+  color: var(--architecture-muted);
+}
+
 .architecture-inspector-section ul,
 .architecture-component-list,
 .architecture-relation-list,

@@ -17,6 +17,8 @@ from api.models import (
     AnalysisRequest,
     AnalysisRun,
     CapabilitiesResponse,
+    ComponentAnnotationResponse,
+    ComponentAnnotationUpdate,
     FindingPage,
     FindingReviewUpdate,
     HealthResponse,
@@ -387,6 +389,31 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
         if component is None:
             raise HTTPException(status_code=404, detail="Semantic component not found")
         return component
+
+    @app.put(
+        "/api/v1/snapshots/{snapshot_id}/semantic-components/{component_id}/annotation",
+        response_model=ComponentAnnotationResponse,
+    )
+    async def update_component_annotation(
+        snapshot_id: str,
+        component_id: str,
+        payload: ComponentAnnotationUpdate,
+        request: Request,
+    ) -> dict:
+        try:
+            annotation = (
+                await request.app.state.analysis_service.update_component_annotation(
+                    snapshot_id,
+                    component_id,
+                    note=payload.note,
+                    expected_version=payload.expected_version,
+                )
+            )
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        if annotation is None:
+            raise HTTPException(status_code=404, detail="Semantic component not found")
+        return annotation
 
     @app.get("/api/v1/snapshots/{snapshot_id}/semantic-trace")
     async def semantic_architecture_trace(

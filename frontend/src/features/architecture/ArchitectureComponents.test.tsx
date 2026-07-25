@@ -180,6 +180,7 @@ const detail: SemanticComponentDetail = {
   ],
   provenance: [],
   findings: graph.findings,
+  annotation: null,
   evidence_truncated: false,
   limits: { detail_row_limit: 250 },
 };
@@ -386,13 +387,24 @@ describe("Architecture Explorer feature components", () => {
   it("shows defensive membership and endpoint metadata in the inspector", async () => {
     const user = userEvent.setup();
     const onFinding = vi.fn();
-    render(<ComponentInspector component={service} detail={detail} onOpenFinding={onFinding} />);
+    const onSaveAnnotation = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ComponentInspector
+        component={service}
+        detail={detail}
+        onOpenFinding={onFinding}
+        onSaveAnnotation={onSaveAnnotation}
+      />,
+    );
 
     expect(screen.getByText("file-1")).toBeInTheDocument();
     expect(screen.getByText("unknown / unknown lines")).toBeInTheDocument();
     expect(screen.getByText("FastAPI / complete")).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /Unsafe query construction/i }));
     expect(onFinding).toHaveBeenCalledWith("finding-1");
+    await user.type(screen.getByLabelText("Component annotation"), "Owner verified");
+    await user.click(screen.getByRole("button", { name: "Save annotation" }));
+    expect(onSaveAnnotation).toHaveBeenCalledWith("Owner verified", 0);
   });
 
   it("makes bounded component evidence explicit in the inspector", () => {

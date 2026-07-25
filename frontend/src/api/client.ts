@@ -6,6 +6,7 @@ import type {
   ArchitectureGraph,
   ArchitectureTrace,
   CapabilitiesResponse,
+  ComponentAnnotation,
   FindingDetail,
   FindingPage,
   FindingReviewState,
@@ -125,6 +126,15 @@ export const apiClient = {
     request<SemanticComponentDetail>(
       `/api/v1/snapshots/${encodeURIComponent(snapshotId)}/semantic-components/${encodeURIComponent(componentId)}`,
       { signal },
+    ),
+  updateComponentAnnotation: (
+    snapshotId: string,
+    componentId: string,
+    payload: { note: string; expected_version: number },
+  ) =>
+    request<ComponentAnnotation>(
+      `/api/v1/snapshots/${encodeURIComponent(snapshotId)}/semantic-components/${encodeURIComponent(componentId)}/annotation`,
+      { method: "PUT", body: JSON.stringify(payload) },
     ),
   semanticTrace: (
     snapshotId: string,

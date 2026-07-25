@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 import threading
@@ -11,6 +12,7 @@ from pathlib import Path
 import pytest
 
 from infrastructure.db.database import (
+    MIGRATIONS,
     SCHEMA_VERSION,
     checkpoint_database,
     database_connection,
@@ -82,6 +84,110 @@ def test_database_rejects_schema_newer_than_application(tmp_path: Path) -> None:
         assert "newer than supported" in str(exc)
     else:
         raise AssertionError("newer schemas must not be opened")
+
+
+def test_annotation_identity_upgrade_preserves_v7_notes_and_history(
+    tmp_path: Path,
+) -> None:
+    database_path = tmp_path / "codeinsight.db"
+    connection = sqlite3.connect(database_path)
+    connection.executescript(
+        """
+        PRAGMA foreign_keys = ON;
+        CREATE TABLE schema_migrations (
+            version INTEGER PRIMARY KEY,
+            description TEXT NOT NULL,
+            checksum TEXT NOT NULL,
+            applied_at TEXT NOT NULL
+        );
+        CREATE TABLE repository_snapshots (snapshot_id TEXT PRIMARY KEY);
+        CREATE TABLE semantic_components (
+            component_id TEXT PRIMARY KEY,
+            snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id),
+            stable_key TEXT NOT NULL
+        );
+        CREATE TABLE architecture_component_annotations (
+            annotation_id TEXT PRIMARY KEY,
+            snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id)
+                ON DELETE CASCADE,
+            component_id TEXT NOT NULL REFERENCES semantic_components(component_id)
+                ON DELETE CASCADE,
+            note TEXT NOT NULL CHECK (length(note) BETWEEN 1 AND 4000),
+            version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),
+            actor TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(snapshot_id, component_id)
+        );
+        CREATE TABLE architecture_component_annotation_events (
+            annotation_event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            annotation_id TEXT NOT NULL
+                REFERENCES architecture_component_annotations(annotation_id)
+                ON DELETE CASCADE,
+            snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id)
+                ON DELETE CASCADE,
+            component_id TEXT NOT NULL REFERENCES semantic_components(component_id)
+                ON DELETE CASCADE,
+            note TEXT NOT NULL CHECK (length(note) BETWEEN 1 AND 4000),
+            version INTEGER NOT NULL CHECK (version >= 1),
+            actor TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_architecture_annotations_snapshot
+            ON architecture_component_annotations(snapshot_id, updated_at);
+        CREATE INDEX idx_architecture_annotation_events_annotation
+            ON architecture_component_annotation_events(annotation_id, version);
+        INSERT INTO repository_snapshots VALUES ('snapshot-1');
+        INSERT INTO semantic_components VALUES (
+            'component-old', 'snapshot-1', 'service:orders'
+        );
+        INSERT INTO architecture_component_annotations VALUES (
+            'annotation-1', 'snapshot-1', 'component-old', 'Owner verified',
+            1, 'local-user', 'now', 'now'
+        );
+        INSERT INTO architecture_component_annotation_events(
+            annotation_id, snapshot_id, component_id, note, version, actor, created_at
+        ) VALUES (
+            'annotation-1', 'snapshot-1', 'component-old', 'Owner verified',
+            1, 'local-user', 'now'
+        );
+        """
+    )
+    connection.executemany(
+        """
+        INSERT INTO schema_migrations(version, description, checksum, applied_at)
+        VALUES (?, ?, ?, 'now')
+        """,
+        [
+            (
+                version,
+                MIGRATIONS[version][0],
+                hashlib.sha256(
+                    "\n".join(MIGRATIONS[version][1]).encode("utf-8")
+                ).hexdigest(),
+            )
+            for version in range(1, 8)
+        ],
+    )
+    connection.commit()
+    connection.close()
+
+    assert initialize_database(database_path) == 8
+    with database_connection(database_path) as upgraded:
+        annotation = upgraded.execute(
+            """
+            SELECT component_stable_key, note
+            FROM architecture_component_annotations
+            """
+        ).fetchone()
+        event = upgraded.execute(
+            """
+            SELECT component_stable_key, note
+            FROM architecture_component_annotation_events
+            """
+        ).fetchone()
+    assert tuple(annotation) == ("service:orders", "Owner verified")
+    assert tuple(event) == ("service:orders", "Owner verified")
 
 
 @pytest.mark.parametrize("column", ["description", "checksum"])

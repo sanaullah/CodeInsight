@@ -227,6 +227,24 @@ class FindingPage(BaseModel):
     counts_by_severity: dict[str, int] = Field(default_factory=dict)
 
 
+class ComponentAnnotationUpdate(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True, extra="forbid")
+
+    note: str = Field(min_length=1, max_length=4000)
+    expected_version: int = Field(ge=0)
+
+
+class ComponentAnnotationResponse(BaseModel):
+    annotation_id: str
+    snapshot_id: str
+    component_id: str
+    note: str
+    version: int = Field(ge=1)
+    actor: str
+    created_at: datetime
+    updated_at: datetime
+
+
 class LocalSettings(BaseModel):
     """Durable non-secret defaults for local analysis runs."""
 

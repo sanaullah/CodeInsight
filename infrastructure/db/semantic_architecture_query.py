@@ -295,6 +295,15 @@ class SqliteSemanticArchitectureQuery:
             )
             findings_capped = len(findings) > COMPONENT_DETAIL_LIMIT
             findings = findings[:COMPONENT_DETAIL_LIMIT]
+            annotation_row = connection.execute(
+                """
+                SELECT annotation_id, snapshot_id, note, version, actor,
+                       created_at, updated_at
+                FROM architecture_component_annotations
+                WHERE snapshot_id = ? AND component_stable_key = ?
+                """,
+                (snapshot_id, row["stable_key"]),
+            ).fetchone()
         return {
             **_record(row),
             "memberships": memberships,
@@ -302,6 +311,11 @@ class SqliteSemanticArchitectureQuery:
             "endpoints": endpoints,
             "provenance": provenance,
             "findings": findings,
+            "annotation": (
+                {**dict(annotation_row), "component_id": component_id}
+                if annotation_row
+                else None
+            ),
             "evidence_truncated": any(
                 (
                     memberships_capped,

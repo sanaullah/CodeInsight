@@ -41,7 +41,7 @@ def test_health_frontend_and_analysis_lifecycle(tmp_path: Path) -> None:
             "environment_manager": "uv",
             "database_engine": "SQLite",
             "database_journal_mode": "WAL",
-            "database_schema_version": 6,
+            "database_schema_version": 8,
             "artifact_store": "filesystem",
             "api_docs_url": "/api/docs",
             "read_only_analysis": True,

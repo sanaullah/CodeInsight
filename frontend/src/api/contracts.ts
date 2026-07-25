@@ -493,8 +493,20 @@ export interface SemanticComponentDetail extends SemanticComponent {
   endpoints: SemanticEndpoint[];
   provenance: SemanticProvenance[];
   findings: SemanticFindingLink[];
+  annotation: ComponentAnnotation | null;
   evidence_truncated: boolean;
   limits: { detail_row_limit: number };
+}
+
+export interface ComponentAnnotation {
+  annotation_id: string;
+  snapshot_id: string;
+  component_id: string;
+  note: string;
+  version: number;
+  actor: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface SemanticTrace {
