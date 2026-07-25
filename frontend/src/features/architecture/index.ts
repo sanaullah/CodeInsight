@@ -32,3 +32,11 @@ export type { TopologyViewportProps } from "./TopologyViewport";
 export { TopologyViewport } from "./TopologyViewport";
 export type { TraceRailProps } from "./TraceRail";
 export { TraceRail } from "./TraceRail";
+export type { ArchitectureViewState } from "./viewState";
+export {
+  ARCHITECTURE_VIEW_VERSION,
+  COMPONENT_KINDS,
+  decodeArchitectureView,
+  encodeArchitectureView,
+  RELATION_KINDS,
+} from "./viewState";

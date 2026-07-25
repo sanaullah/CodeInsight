@@ -14,30 +14,18 @@ import { EmptyState, ErrorNotice, PageHeader, Panel, StatCard } from "../compone
 import {
   ArchitectureTextAlternative,
   ArchitectureWorkspace,
+  COMPONENT_KINDS,
   ComponentInspector,
+  decodeArchitectureView,
+  encodeArchitectureView,
   FindingEvidenceDrawer,
   LayerRail,
+  RELATION_KINDS,
   TopologyViewport,
   TraceRail,
 } from "../features/architecture";
 import { shortId } from "../format";
 
-const COMPONENT_KINDS: SemanticComponentKind[] = [
-  "service",
-  "datastore",
-  "external_system",
-  "queue",
-  "library",
-  "unknown",
-];
-const RELATION_KINDS: SemanticRelationKind[] = [
-  "request",
-  "event",
-  "data_access",
-  "dependency",
-  "call",
-  "unknown",
-];
 const KIND_LABELS: Record<SemanticComponentKind, string> = {
   service: "Services",
   datastore: "Data stores",
@@ -47,34 +35,12 @@ const KIND_LABELS: Record<SemanticComponentKind, string> = {
   unknown: "Unknown",
 };
 
-function initialValues() {
-  const params = new URLSearchParams(window.location.search);
-  const componentKinds = params.getAll("component_kind").filter(isComponentKind);
-  const relationKinds = params.getAll("relation_kind").filter(isRelationKind);
-  return {
-    snapshotId: params.get("snapshot") ?? "",
-    focus: params.get("focus") ?? "",
-    selectedId: params.get("selected") ?? "",
-    showBoundaries: params.get("boundaries") !== "false",
-    componentKinds: new Set<SemanticComponentKind>(
-      componentKinds.length ? componentKinds : COMPONENT_KINDS,
-    ),
-    relationKinds: new Set<SemanticRelationKind>(
-      relationKinds.length ? relationKinds : RELATION_KINDS,
-    ),
-  };
-}
-
 function isComponentKind(value: string): value is SemanticComponentKind {
   return COMPONENT_KINDS.includes(value as SemanticComponentKind);
 }
 
-function isRelationKind(value: string): value is SemanticRelationKind {
-  return RELATION_KINDS.includes(value as SemanticRelationKind);
-}
-
 export function ArchitecturePage() {
-  const initial = useMemo(initialValues, []);
+  const initial = useMemo(() => decodeArchitectureView(window.location.search), []);
   const [snapshots, setSnapshots] = useState<SnapshotSummary[]>([]);
   const [snapshotId, setSnapshotId] = useState(initial.snapshotId);
   const [focus, setFocus] = useState(initial.focus);
@@ -86,8 +52,9 @@ export function ArchitecturePage() {
   const [detail, setDetail] = useState<SemanticComponentDetail | null>(null);
   const [finding, setFinding] = useState<FindingDetail | null>(null);
   const [trace, setTrace] = useState<SemanticTrace | null>(null);
-  const [traceSource, setTraceSource] = useState("");
-  const [traceTarget, setTraceTarget] = useState("");
+  const [traceSource, setTraceSource] = useState(initial.traceSource);
+  const [traceTarget, setTraceTarget] = useState(initial.traceTarget);
+  const [copyStatus, setCopyStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [findingLoading, setFindingLoading] = useState(false);
@@ -141,24 +108,28 @@ export function ArchitecturePage() {
   }, []);
 
   useEffect(() => {
-    const route = new URLSearchParams();
-    if (snapshotId) route.set("snapshot", snapshotId);
-    for (const kind of COMPONENT_KINDS) {
-      if (componentKinds.has(kind) && componentKinds.size < COMPONENT_KINDS.length) {
-        route.append("component_kind", kind);
-      }
-    }
-    for (const kind of RELATION_KINDS) {
-      if (relationKinds.has(kind) && relationKinds.size < RELATION_KINDS.length) {
-        route.append("relation_kind", kind);
-      }
-    }
-    if (focus) route.set("focus", focus);
-    if (selectedId) route.set("selected", selectedId);
-    if (!showBoundaries) route.set("boundaries", "false");
+    const route = encodeArchitectureView({
+      snapshotId,
+      focus,
+      selectedId,
+      showBoundaries,
+      componentKinds,
+      relationKinds,
+      traceSource,
+      traceTarget,
+    });
     const query = route.toString();
     window.history.replaceState({}, "", query ? `/architecture?${query}` : "/architecture");
-  }, [componentKinds, focus, relationKinds, selectedId, showBoundaries, snapshotId]);
+  }, [
+    componentKinds,
+    focus,
+    relationKinds,
+    selectedId,
+    showBoundaries,
+    snapshotId,
+    traceSource,
+    traceTarget,
+  ]);
 
   useEffect(() => {
     if (!snapshotId) return;
@@ -266,6 +237,26 @@ export function ArchitecturePage() {
     }
   }
 
+  async function copyViewLink() {
+    const route = encodeArchitectureView({
+      snapshotId,
+      focus,
+      selectedId,
+      showBoundaries,
+      componentKinds,
+      relationKinds,
+      traceSource,
+      traceTarget,
+    });
+    const url = new URL(`/architecture?${route.toString()}`, window.location.href);
+    try {
+      await navigator.clipboard.writeText(url.toString());
+      setCopyStatus("Snapshot-pinned view link copied.");
+    } catch {
+      setCopyStatus("Clipboard access is unavailable.");
+    }
+  }
+
   const layers = COMPONENT_KINDS.map((kind) => ({
     id: kind,
     label: KIND_LABELS[kind],
@@ -337,6 +328,22 @@ export function ArchitecturePage() {
   return (
     <div className="page dense-workspace architecture-page">
       <PageHeader
+        actions={
+          <>
+            <button
+              className="button button-secondary"
+              disabled={!snapshotId}
+              onClick={() => void copyViewLink()}
+              title="Copy this snapshot, layer, focus, selection, and trace configuration"
+              type="button"
+            >
+              Copy view link
+            </button>
+            <output aria-live="polite" className="architecture-copy-status">
+              {copyStatus}
+            </output>
+          </>
+        }
         description="Explore bounded, evidence-derived services, stores, external systems, queues, and typed relations. Static dependencies are shown as static facts, never runtime data flow."
         eyebrow="Repository evidence"
         title="Architecture explorer"

@@ -420,6 +420,11 @@ describe("application shell", () => {
   it("explores semantic architecture, component evidence, and a typed trace", async () => {
     window.history.replaceState({}, "", "/architecture");
     const user = userEvent.setup();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: { writeText },
+    });
     vi.mocked(apiClient.snapshots).mockResolvedValue([
       {
         snapshot_id: "snapshot-1",
@@ -600,6 +605,13 @@ describe("application shell", () => {
     await user.click(screen.getByRole("button", { name: "Trace evidence" }));
     expect((await screen.findAllByText("data access")).length).toBeGreaterThan(0);
     expect(window.location.search).toContain("selected=service-orders");
+    await user.click(screen.getByRole("button", { name: "Copy view link" }));
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringMatching(
+        /\/architecture\?view=1&snapshot=snapshot-1&selected=service-orders&trace_source=service-orders&trace_target=store-orders$/,
+      ),
+    );
+    expect(screen.getByText("Snapshot-pinned view link copied.")).toBeInTheDocument();
     const accessibility = await axe.run(view.container, {
       rules: { "color-contrast": { enabled: false } },
     });

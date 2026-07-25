@@ -2,6 +2,12 @@
   min-width: 0;
 }
 
+.architecture-copy-status {
+  max-width: 15rem;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
 .architecture-semantic-controls {
   display: grid;
   grid-template-columns: minmax(14rem, 0.9fr) minmax(16rem, 1.4fr) auto;
