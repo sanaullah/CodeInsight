@@ -1,5 +1,7 @@
 import "./architecture.css";
 
+export type { ArchitectureComparisonPanelProps } from "./ArchitectureComparisonPanel";
+export { ArchitectureComparisonPanel } from "./ArchitectureComparisonPanel";
 export type { ArchitectureTextAlternativeProps } from "./ArchitectureTextAlternative";
 export { ArchitectureTextAlternative } from "./ArchitectureTextAlternative";
 export type { ArchitectureWorkspaceProps } from "./ArchitectureWorkspace";
@@ -11,12 +13,15 @@ export { FindingEvidenceDrawer } from "./FindingEvidenceDrawer";
 export type { LayerRailProps } from "./LayerRail";
 export { LayerRail } from "./LayerRail";
 export type {
+  ArchitectureComparison,
+  ArchitectureComponentChange,
   ArchitectureLayer,
   ArchitectureProjectionStatus,
   TopologyPosition,
 } from "./model";
 export {
   applyArchitectureLens,
+  compareArchitectureGraphs,
   componentId,
   componentLabel,
   componentMap,

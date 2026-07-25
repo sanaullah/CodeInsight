@@ -12,11 +12,13 @@ import type {
 } from "../api/contracts";
 import { EmptyState, ErrorNotice, PageHeader, Panel, StatCard } from "../components/primitives";
 import {
+  ArchitectureComparisonPanel,
   ArchitectureTextAlternative,
   ArchitectureWorkspace,
   applyArchitectureLens,
   COMPONENT_KINDS,
   ComponentInspector,
+  compareArchitectureGraphs,
   decodeArchitectureView,
   encodeArchitectureView,
   FindingEvidenceDrawer,
@@ -40,6 +42,26 @@ function isComponentKind(value: string): value is SemanticComponentKind {
   return COMPONENT_KINDS.includes(value as SemanticComponentKind);
 }
 
+function architectureQuery(
+  componentKinds: Set<SemanticComponentKind>,
+  relationKinds: Set<SemanticRelationKind>,
+  focus = "",
+): URLSearchParams {
+  const params = new URLSearchParams({ limit: "160", depth: focus ? "2" : "1" });
+  if (componentKinds.size < COMPONENT_KINDS.length) {
+    for (const kind of COMPONENT_KINDS) {
+      if (componentKinds.has(kind)) params.append("component_kind", kind);
+    }
+  }
+  if (relationKinds.size < RELATION_KINDS.length) {
+    for (const kind of RELATION_KINDS) {
+      if (relationKinds.has(kind)) params.append("relation_kind", kind);
+    }
+  }
+  if (focus) params.set("focus", focus);
+  return params;
+}
+
 export function ArchitecturePage() {
   const initial = useMemo(() => decodeArchitectureView(window.location.search), []);
   const [snapshots, setSnapshots] = useState<SnapshotSummary[]>([]);
@@ -56,6 +78,12 @@ export function ArchitecturePage() {
   const [traceSource, setTraceSource] = useState(initial.traceSource);
   const [traceTarget, setTraceTarget] = useState(initial.traceTarget);
   const [lens, setLens] = useState(initial.lens);
+  const [compareSnapshotId, setCompareSnapshotId] = useState(initial.compareSnapshotId);
+  const [comparison, setComparison] = useState<ReturnType<typeof compareArchitectureGraphs> | null>(
+    null,
+  );
+  const [comparisonLoading, setComparisonLoading] = useState(false);
+  const [comparisonError, setComparisonError] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -114,6 +142,10 @@ export function ArchitecturePage() {
   }, []);
 
   useEffect(() => {
+    if (compareSnapshotId === snapshotId) setCompareSnapshotId("");
+  }, [compareSnapshotId, snapshotId]);
+
+  useEffect(() => {
     const route = encodeArchitectureView({
       snapshotId,
       focus,
@@ -124,6 +156,7 @@ export function ArchitecturePage() {
       traceSource,
       traceTarget,
       lens,
+      compareSnapshotId,
     });
     const query = route.toString();
     window.history.replaceState({}, "", query ? `/architecture?${query}` : "/architecture");
@@ -137,23 +170,13 @@ export function ArchitecturePage() {
     traceSource,
     traceTarget,
     lens,
+    compareSnapshotId,
   ]);
 
   useEffect(() => {
     if (!snapshotId) return;
     const controller = new AbortController();
-    const params = new URLSearchParams({ limit: "160", depth: focus ? "2" : "1" });
-    if (componentKinds.size < COMPONENT_KINDS.length) {
-      for (const kind of COMPONENT_KINDS) {
-        if (componentKinds.has(kind)) params.append("component_kind", kind);
-      }
-    }
-    if (relationKinds.size < RELATION_KINDS.length) {
-      for (const kind of RELATION_KINDS) {
-        if (relationKinds.has(kind)) params.append("relation_kind", kind);
-      }
-    }
-    if (focus) params.set("focus", focus);
+    const params = architectureQuery(componentKinds, relationKinds, focus);
     setLoading(true);
     apiClient
       .semanticArchitecture(snapshotId, params, controller.signal)
@@ -171,6 +194,37 @@ export function ArchitecturePage() {
       .finally(() => setLoading(false));
     return () => controller.abort();
   }, [componentKinds, focus, relationKinds, snapshotId]);
+
+  useEffect(() => {
+    if (!snapshotId || !compareSnapshotId || snapshotId === compareSnapshotId) {
+      setComparison(null);
+      setComparisonError(null);
+      return;
+    }
+    const controller = new AbortController();
+    const params = architectureQuery(componentKinds, relationKinds);
+    setComparisonLoading(true);
+    setComparisonError(null);
+    Promise.all([
+      apiClient.semanticArchitecture(snapshotId, params, controller.signal),
+      apiClient.semanticArchitecture(
+        compareSnapshotId,
+        new URLSearchParams(params),
+        controller.signal,
+      ),
+    ])
+      .then(([current, baseline]) => setComparison(compareArchitectureGraphs(baseline, current)))
+      .catch((reason) => {
+        if (reason instanceof DOMException && reason.name === "AbortError") return;
+        setComparisonError(
+          reason instanceof Error ? reason.message : "Unable to compare snapshot projections",
+        );
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setComparisonLoading(false);
+      });
+    return () => controller.abort();
+  }, [compareSnapshotId, componentKinds, relationKinds, snapshotId]);
 
   useEffect(() => {
     if (!snapshotId || !selectedId) {
@@ -256,6 +310,7 @@ export function ArchitecturePage() {
       traceSource,
       traceTarget,
       lens,
+      compareSnapshotId,
     });
     const url = new URL(`/architecture?${route.toString()}`, window.location.href);
     try {
@@ -389,6 +444,23 @@ export function ArchitecturePage() {
             <option value="impact">Selected component impact</option>
           </select>
         </label>
+        <label>
+          <span className="architecture-control-label">Compare against</span>
+          <select
+            disabled={!snapshotId || snapshots.length < 2}
+            onChange={(event) => setCompareSnapshotId(event.target.value)}
+            value={compareSnapshotId}
+          >
+            <option value="">No comparison</option>
+            {snapshots
+              .filter((snapshot) => snapshot.snapshot_id !== snapshotId)
+              .map((snapshot) => (
+                <option key={snapshot.snapshot_id} value={snapshot.snapshot_id}>
+                  {snapshot.display_name} · {shortId(snapshot.snapshot_id)}
+                </option>
+              ))}
+          </select>
+        </label>
         <button
           className="button button-secondary"
           disabled={!focus}
@@ -446,6 +518,18 @@ export function ArchitecturePage() {
               {new Date(graph.created_at).toLocaleString()} · {graph.completeness.status} projection
             </span>
           </div>
+          {compareSnapshotId ? (
+            <ArchitectureComparisonPanel
+              baselineLabel={
+                snapshots.find((snapshot) => snapshot.snapshot_id === compareSnapshotId)
+                  ?.display_name ?? shortId(compareSnapshotId)
+              }
+              comparison={comparison}
+              currentLabel={graph.display_name}
+              error={comparisonError}
+              loading={comparisonLoading}
+            />
+          ) : null}
           <div className="stat-grid">
             <StatCard
               detail="Evidence-derived semantic services"

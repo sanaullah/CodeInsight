@@ -440,6 +440,20 @@ describe("application shell", () => {
         symbol_count: 0,
         edge_count: 1,
       },
+      {
+        snapshot_id: "snapshot-0",
+        project_id: "project-1",
+        display_name: "Baseline",
+        git_repository: "git",
+        base_commit: "base",
+        head_commit: "baseline",
+        dirty: false,
+        metadata: {},
+        created_at: "2026-07-24T12:00:00Z",
+        file_count: 2,
+        symbol_count: 0,
+        edge_count: 1,
+      },
     ]);
     const components = [
       {
@@ -622,6 +636,11 @@ describe("application shell", () => {
       await screen.findByRole("heading", { name: "Dependency impact neighborhood" }),
     ).toBeInTheDocument();
     expect(screen.getByText(/not a runtime blast-radius claim/i)).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Compare against"), "snapshot-0");
+    expect(
+      await screen.findByRole("heading", { name: "Snapshot comparison" }),
+    ).toBeInTheDocument();
+    expect(window.location.search).toContain("compare=snapshot-0");
     const accessibility = await axe.run(view.container, {
       rules: { "color-contrast": { enabled: false } },
     });

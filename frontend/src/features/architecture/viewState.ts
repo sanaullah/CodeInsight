@@ -32,6 +32,7 @@ export interface ArchitectureViewState {
   traceSource: string;
   traceTarget: string;
   lens: ArchitectureLens;
+  compareSnapshotId: string;
 }
 
 function isComponentKind(value: string): value is SemanticComponentKind {
@@ -69,6 +70,7 @@ export function decodeArchitectureView(search: string): ArchitectureViewState {
     lens: ARCHITECTURE_LENSES.includes(lensParam as ArchitectureLens)
       ? (lensParam as ArchitectureLens)
       : "topology",
+    compareSnapshotId: params.get("compare") ?? "",
   };
 }
 
@@ -99,5 +101,8 @@ export function encodeArchitectureView(state: ArchitectureViewState): URLSearchP
   if (state.traceSource) params.set("trace_source", state.traceSource);
   if (state.traceTarget) params.set("trace_target", state.traceTarget);
   if (state.lens !== "topology") params.set("lens", state.lens);
+  if (state.compareSnapshotId && state.compareSnapshotId !== state.snapshotId) {
+    params.set("compare", state.compareSnapshotId);
+  }
   return params;
 }

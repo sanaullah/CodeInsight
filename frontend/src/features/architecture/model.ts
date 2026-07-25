@@ -1,6 +1,7 @@
 import type {
   SemanticArchitectureGraph,
   SemanticComponent,
+  SemanticRelation,
   SemanticTrace,
 } from "../../api/contracts";
 import type { ArchitectureLens } from "./viewState";
@@ -23,6 +24,22 @@ export interface ArchitectureLayer {
   count: number;
   active: boolean;
   description?: string;
+}
+
+export interface ArchitectureComponentChange {
+  stableKey: string;
+  before: SemanticComponent;
+  after: SemanticComponent;
+  fields: string[];
+}
+
+export interface ArchitectureComparison {
+  addedComponents: SemanticComponent[];
+  removedComponents: SemanticComponent[];
+  changedComponents: ArchitectureComponentChange[];
+  addedRelations: SemanticRelation[];
+  removedRelations: SemanticRelation[];
+  incomplete: boolean;
 }
 
 export function componentId(component: SemanticComponent): string {
@@ -153,5 +170,65 @@ export function applyArchitectureLens(
         componentIds.has(relation.target_component_id),
     ),
     findings: graph.findings.filter((finding) => componentIds.has(finding.component_id)),
+  };
+}
+
+export function compareArchitectureGraphs(
+  baseline: SemanticArchitectureGraph,
+  current: SemanticArchitectureGraph,
+): ArchitectureComparison {
+  const baselineComponents = new Map(
+    baseline.components.map((component) => [component.stable_key, component]),
+  );
+  const currentComponents = new Map(
+    current.components.map((component) => [component.stable_key, component]),
+  );
+  const addedComponents = current.components.filter(
+    (component) => !baselineComponents.has(component.stable_key),
+  );
+  const removedComponents = baseline.components.filter(
+    (component) => !currentComponents.has(component.stable_key),
+  );
+  const changedComponents: ArchitectureComponentChange[] = [];
+  for (const component of current.components) {
+    const before = baselineComponents.get(component.stable_key);
+    if (!before) continue;
+    const fields = [
+      ["name", before.name, component.name],
+      ["kind", before.component_kind, component.component_kind],
+      ["support tier", before.support_tier, component.support_tier],
+      ["completeness", before.completeness, component.completeness],
+    ]
+      .filter(([, left, right]) => left !== right)
+      .map(([field]) => field);
+    if (fields.length) {
+      changedComponents.push({
+        stableKey: component.stable_key,
+        before,
+        after: component,
+        fields,
+      });
+    }
+  }
+
+  const baselineRelations = new Set(baseline.relations.map((relation) => relation.stable_key));
+  const currentRelations = new Set(current.relations.map((relation) => relation.stable_key));
+  return {
+    addedComponents,
+    removedComponents,
+    changedComponents,
+    addedRelations: current.relations.filter(
+      (relation) => !baselineRelations.has(relation.stable_key),
+    ),
+    removedRelations: baseline.relations.filter(
+      (relation) => !currentRelations.has(relation.stable_key),
+    ),
+    incomplete:
+      baseline.truncated ||
+      baseline.findings_truncated ||
+      baseline.completeness.status !== "complete" ||
+      current.truncated ||
+      current.findings_truncated ||
+      current.completeness.status !== "complete",
   };
 }

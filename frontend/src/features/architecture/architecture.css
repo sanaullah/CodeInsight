@@ -10,7 +10,9 @@
 
 .architecture-semantic-controls {
   display: grid;
-  grid-template-columns: minmax(14rem, 0.9fr) minmax(16rem, 1.4fr) minmax(12rem, 0.8fr) auto;
+  grid-template-columns:
+    minmax(13rem, 0.9fr) minmax(15rem, 1.3fr) minmax(11rem, 0.8fr)
+    minmax(13rem, 0.9fr) auto;
   gap: 0.75rem;
   align-items: end;
   margin-bottom: 1rem;
@@ -23,6 +25,67 @@
   margin: 0;
   color: var(--muted);
   font-size: 0.78rem;
+}
+
+.architecture-comparison {
+  margin-bottom: 1rem;
+  padding: 1rem;
+}
+
+.architecture-comparison > header {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.architecture-comparison h2,
+.architecture-comparison h3,
+.architecture-comparison p {
+  margin: 0;
+}
+
+.architecture-comparison-meta,
+.architecture-comparison-notice,
+.architecture-comparison-empty,
+.architecture-comparison-more {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.architecture-comparison-notice {
+  margin-top: 0.75rem;
+}
+
+.architecture-comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.architecture-comparison-grid section {
+  min-width: 0;
+  padding: 0.75rem;
+  background: var(--surface-raised, var(--surface));
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.architecture-comparison-grid h3 {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  font-size: 0.78rem;
+}
+
+.architecture-comparison-grid ul {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0.65rem 0 0;
+  padding-left: 1rem;
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
 }
 
 .architecture-semantic-controls > label,
@@ -836,6 +899,14 @@
 }
 
 @media (max-width: 62rem) {
+  .architecture-semantic-controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .architecture-comparison-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .architecture-primary-grid {
     grid-template-columns: minmax(11rem, 0.65fr) minmax(0, 2fr);
   }
