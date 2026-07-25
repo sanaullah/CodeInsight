@@ -619,6 +619,18 @@ describe("application shell", () => {
     const view = render(<App />);
     expect(await screen.findByRole("heading", { name: "Semantic topology" })).toBeInTheDocument();
     expect(screen.getByText(/partial projection/i)).toBeInTheDocument();
+    const graphRequestsBeforeSearch = vi.mocked(apiClient.semanticArchitecture).mock.calls.length;
+    await user.type(screen.getByLabelText("Search and focus components"), "Orders");
+    expect(screen.getByText("2 local matches")).toBeInTheDocument();
+    expect(vi.mocked(apiClient.semanticArchitecture).mock.calls).toHaveLength(
+      graphRequestsBeforeSearch,
+    );
+    await user.click(screen.getByRole("button", { name: "Apply exact focus" }));
+    await waitFor(() => {
+      const params = vi.mocked(apiClient.semanticArchitecture).mock.calls.at(-1)?.[1];
+      expect(params?.get("focus")).toBe("Orders");
+    });
+    await user.click(screen.getByRole("button", { name: "Clear focus" }));
     await user.click(screen.getAllByRole("button", { name: /Orders service/i })[0]);
     expect(await screen.findByText("app/orders.py")).toBeInTheDocument();
     await user.type(screen.getByLabelText("Component annotation"), "Owner verified");

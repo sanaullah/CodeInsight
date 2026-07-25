@@ -2,6 +2,8 @@ import "./architecture.css";
 
 export type { ArchitectureComparisonPanelProps } from "./ArchitectureComparisonPanel";
 export { ArchitectureComparisonPanel } from "./ArchitectureComparisonPanel";
+export type { ArchitectureFocusSearchProps } from "./ArchitectureFocusSearch";
+export { ArchitectureFocusSearch } from "./ArchitectureFocusSearch";
 export type { ArchitectureTextAlternativeProps } from "./ArchitectureTextAlternative";
 export { ArchitectureTextAlternative } from "./ArchitectureTextAlternative";
 export type { ArchitectureWorkspaceProps } from "./ArchitectureWorkspace";

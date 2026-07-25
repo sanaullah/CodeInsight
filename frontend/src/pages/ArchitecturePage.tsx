@@ -13,6 +13,7 @@ import type {
 import { EmptyState, ErrorNotice, PageHeader, Panel, StatCard } from "../components/primitives";
 import {
   ArchitectureComparisonPanel,
+  ArchitectureFocusSearch,
   ArchitectureTextAlternative,
   ArchitectureWorkspace,
   applyArchitectureLens,
@@ -67,6 +68,7 @@ export function ArchitecturePage() {
   const [snapshots, setSnapshots] = useState<SnapshotSummary[]>([]);
   const [snapshotId, setSnapshotId] = useState(initial.snapshotId);
   const [focus, setFocus] = useState(initial.focus);
+  const [focusDraft, setFocusDraft] = useState(initial.focus);
   const [selectedId, setSelectedId] = useState(initial.selectedId);
   const [componentKinds, setComponentKinds] = useState(initial.componentKinds);
   const [relationKinds, setRelationKinds] = useState(initial.relationKinds);
@@ -254,6 +256,7 @@ export function ArchitecturePage() {
 
   function focusComponent(component: SemanticComponent) {
     setFocus(component.component_id);
+    setFocusDraft(component.component_id);
     setSelectedId(component.component_id);
   }
 
@@ -447,14 +450,15 @@ export function ArchitecturePage() {
             ))}
           </select>
         </label>
-        <label>
-          <span className="architecture-control-label">Focus neighborhood</span>
-          <input
-            onChange={(event) => setFocus(event.target.value)}
-            placeholder="Component ID, stable key, or exact name"
-            value={focus}
-          />
-        </label>
+        <ArchitectureFocusSearch
+          appliedValue={focus}
+          components={graph?.components ?? []}
+          disabled={!snapshotId}
+          onApply={setFocus}
+          onChange={setFocusDraft}
+          onSelect={focusComponent}
+          value={focusDraft}
+        />
         <label>
           <span className="architecture-control-label">Evidence lens</span>
           <select
@@ -485,8 +489,11 @@ export function ArchitecturePage() {
         </label>
         <button
           className="button button-secondary"
-          disabled={!focus}
-          onClick={() => setFocus("")}
+          disabled={!focus && !focusDraft}
+          onClick={() => {
+            setFocus("");
+            setFocusDraft("");
+          }}
           type="button"
         >
           Clear focus

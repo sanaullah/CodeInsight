@@ -89,10 +89,72 @@
 }
 
 .architecture-semantic-controls > label,
+.architecture-focus-search label,
 .architecture-trace-controls label {
   display: grid;
   gap: 0.35rem;
   min-width: 0;
+}
+
+.architecture-focus-search {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem;
+  align-items: end;
+  min-width: 0;
+}
+
+.architecture-focus-results {
+  position: absolute;
+  z-index: 8;
+  top: calc(100% + 0.35rem);
+  right: 0;
+  left: 0;
+  padding: 0.5rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+
+.architecture-focus-results > span,
+.architecture-focus-results p {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.architecture-focus-results p {
+  margin: 0.35rem 0 0;
+}
+
+.architecture-focus-results ul {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.architecture-focus-results button {
+  display: grid;
+  gap: 0.1rem;
+  width: 100%;
+  padding: 0.45rem;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-radius: 0.35rem;
+}
+
+.architecture-focus-results button:hover,
+.architecture-focus-results button:focus-visible {
+  background: var(--surface-raised, #f5f7fa);
+}
+
+.architecture-focus-results small {
+  color: var(--muted);
+  overflow-wrap: anywhere;
 }
 
 .architecture-control-label {
