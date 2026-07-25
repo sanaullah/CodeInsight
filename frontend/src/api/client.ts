@@ -3,12 +3,15 @@ import type {
   AnalysisIntelligence,
   AnalysisRequest,
   AnalysisRun,
+  ArchitectureGraph,
+  ArchitectureTrace,
   CapabilitiesResponse,
   FindingDetail,
   FindingPage,
   FindingReviewState,
   HealthResponse,
   RecoveryResponse,
+  SnapshotSummary,
 } from "./contracts";
 
 export class ApiError extends Error {
@@ -80,4 +83,16 @@ export const apiClient = {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
+  snapshots: (signal?: AbortSignal) =>
+    request<SnapshotSummary[]>("/api/v1/snapshots?limit=50", { signal }),
+  architecture: (snapshotId: string, params: URLSearchParams, signal?: AbortSignal) =>
+    request<ArchitectureGraph>(
+      `/api/v1/snapshots/${encodeURIComponent(snapshotId)}/architecture?${params}`,
+      { signal },
+    ),
+  trace: (snapshotId: string, sourceId: string, targetId: string, signal?: AbortSignal) =>
+    request<ArchitectureTrace>(
+      `/api/v1/snapshots/${encodeURIComponent(snapshotId)}/trace?source_id=${encodeURIComponent(sourceId)}&target_id=${encodeURIComponent(targetId)}`,
+      { signal },
+    ),
 };

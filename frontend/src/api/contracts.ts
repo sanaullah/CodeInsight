@@ -257,3 +257,63 @@ export interface FindingPage {
   next_cursor: string | null;
   counts_by_severity: Partial<Record<CanonicalFinding["severity"], number>>;
 }
+
+export interface SnapshotSummary {
+  snapshot_id: string;
+  project_id: string;
+  display_name: string;
+  git_repository: string | null;
+  base_commit: string | null;
+  head_commit: string | null;
+  dirty: boolean;
+  metadata: Record<string, unknown>;
+  created_at: string;
+  file_count: number;
+  symbol_count: number;
+  edge_count: number;
+}
+
+export interface ArchitectureNode {
+  node_id: string;
+  label: string;
+  node_kind: "file";
+  language: string | null;
+  classification: string;
+  support_tier: string;
+  line_count: number;
+  confidence: number;
+  derivation: "repository-index";
+  findings: Array<{ finding_id: string; severity: CanonicalFinding["severity"] }>;
+}
+
+export interface ArchitectureEdge {
+  edge_id: string;
+  source_id: string;
+  target_id: string;
+  edge_kind: "imports" | "calls";
+  confidence: number;
+  derivation: "repository-index";
+}
+
+export interface ArchitectureGraph {
+  snapshot_id: string;
+  display_name: string;
+  summary: {
+    file_count: number;
+    language_counts: Record<string, number>;
+    classification_counts: Record<string, number>;
+    changed_paths: string[];
+  };
+  nodes: ArchitectureNode[];
+  edges: ArchitectureEdge[];
+  truncated: boolean;
+  limits: { depth: number; node_limit: number };
+}
+
+export interface ArchitectureTrace {
+  snapshot_id: string;
+  found: boolean;
+  nodes: ArchitectureNode[];
+  edges: ArchitectureEdge[];
+  max_hops: number;
+}

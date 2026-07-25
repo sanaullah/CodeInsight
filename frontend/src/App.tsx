@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { AppShell } from "./components/AppShell";
 import { useOperationalState } from "./hooks/useOperationalState";
+import { ArchitecturePage } from "./pages/ArchitecturePage";
 import { CommandCenterPage } from "./pages/CommandCenterPage";
 import { FindingsPage } from "./pages/FindingsPage";
 import { NewReviewPage } from "./pages/NewReviewPage";
@@ -21,12 +22,7 @@ export function App() {
   } else if (reviewMatch) {
     page = <CommandCenterPage runId={decodeURIComponent(reviewMatch[1])} />;
   } else if (pathname === "/architecture") {
-    page = (
-      <PlaceholderPage
-        description="A bounded, evidence-linked repository graph is planned after its typed API projection exists."
-        title="Architecture explorer"
-      />
-    );
+    page = <ArchitecturePage />;
   } else if (pathname === "/findings") {
     page = <FindingsPage />;
   } else if (pathname === "/history") {

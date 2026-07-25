@@ -28,6 +28,7 @@ from domain.contracts import RunStage
 from indexing.repository_index import RepositoryIndexer
 from infrastructure.artifacts.store import FilesystemArtifactStore
 from infrastructure.db.analysis_repository import SqliteAnalysisRepository
+from infrastructure.db.architecture_repository import SqliteArchitectureRepository
 from infrastructure.db.artifact_repository import SqliteArtifactRepository
 from infrastructure.db.database import checkpoint_database
 from infrastructure.db.finding_repository import SqliteFindingRepository
@@ -166,11 +167,7 @@ class NativeAnalysisExecutor:
             "failed_task_count": result.failed_task_count,
             "usage": intelligence.get("usage", {}),
             "provider_mode": "index-only" if self.offline else "model-backed",
-            "outcome": (
-                "needs_attention"
-                if result.failed_task_count
-                else "succeeded"
-            ),
+            "outcome": ("needs_attention" if result.failed_task_count else "succeeded"),
         }
 
 
@@ -198,9 +195,7 @@ class AnalysisService:
             event_history_limit=event_history_limit,
         )
         self.executor = executor
-        self.database_path = Path(
-            database_path or self.settings.database_path
-        ).resolve()
+        self.database_path = Path(database_path or self.settings.database_path).resolve()
         self.max_concurrent = max_concurrent
         self.event_history_limit = event_history_limit
         self._configured_gateway = gateway
@@ -272,9 +267,7 @@ class AnalysisService:
 
     @property
     def provider_configured(self) -> bool:
-        return self._configured_gateway is not None or bool(
-            self.settings.model_base_url
-        )
+        return self._configured_gateway is not None or bool(self.settings.model_base_url)
 
     @property
     def langfuse_enabled(self) -> bool:
@@ -327,9 +320,7 @@ class AnalysisService:
 
     async def query_findings(self, **filters: Any) -> dict[str, Any]:
         await self.start()
-        return await asyncio.to_thread(
-            SqliteFindingRepository(self._get_ledger()).query, **filters
-        )
+        return await asyncio.to_thread(SqliteFindingRepository(self._get_ledger()).query, **filters)
 
     async def finding_detail(self, finding_id: str) -> dict[str, Any] | None:
         await self.start()
@@ -354,11 +345,31 @@ class AnalysisService:
             expected_version=expected_version,
         )
 
+    async def list_snapshots(self, limit: int = 20) -> list[dict[str, Any]]:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteArchitectureRepository(self._get_ledger()).list_snapshots, limit
+        )
+
+    async def architecture_graph(self, snapshot_id: str, **options: Any) -> dict[str, Any] | None:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteArchitectureRepository(self._get_ledger()).graph,
+            snapshot_id,
+            **options,
+        )
+
+    async def architecture_trace(self, snapshot_id: str, **options: Any) -> dict[str, Any] | None:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteArchitectureRepository(self._get_ledger()).trace,
+            snapshot_id,
+            **options,
+        )
+
     async def list(self, limit: int = 20) -> list[AnalysisRun]:
         await self.start()
-        return [
-            self._to_model(record) for record in self._get_ledger().list_runs(limit)
-        ]
+        return [self._to_model(record) for record in self._get_ledger().list_runs(limit)]
 
     async def cancel(self, run_id: str) -> AnalysisRun | None:
         await self.start()
@@ -410,14 +421,10 @@ class AnalysisService:
             existing = self._tasks.get(run_id)
             if existing is not None and not existing.done():
                 return
-            task = asyncio.create_task(
-                self._execute_run(run_id), name=f"analysis-{run_id}"
-            )
+            task = asyncio.create_task(self._execute_run(run_id), name=f"analysis-{run_id}")
             self._tasks[run_id] = task
             task.add_done_callback(
-                lambda _task, scheduled_run_id=run_id: self._tasks.pop(
-                    scheduled_run_id, None
-                )
+                lambda _task, scheduled_run_id=run_id: self._tasks.pop(scheduled_run_id, None)
             )
 
     async def _execute_run(self, run_id: str) -> None:
@@ -443,9 +450,7 @@ class AnalysisService:
                         )
                     )
 
-                result = await self._get_executor().execute(
-                    run_id, request, event_sink
-                )
+                result = await self._get_executor().execute(run_id, request, event_sink)
                 if result.get("outcome") == "needs_attention":
                     ledger.needs_attention(run_id, result)
                 else:
@@ -478,17 +483,12 @@ class AnalysisService:
         return AnalysisRun.model_validate(normalized)
 
 
-def _synthesize(
-    findings: list[dict[str, Any]], coverage: list[dict[str, Any]]
-) -> str:
+def _synthesize(findings: list[dict[str, Any]], coverage: list[dict[str, Any]]) -> str:
     if not findings:
         gaps = coverage[-1].get("remaining_gaps", []) if coverage else []
         suffix = f" Remaining gaps: {', '.join(gaps)}." if gaps else ""
         return "No evidence-backed findings were accepted." + suffix
     lines = [f"{len(findings)} evidence-backed finding(s) accepted:"]
     for finding in findings:
-        lines.append(
-            f"- [{finding['severity'].upper()}] {finding['title']}: "
-            f"{finding['claim']}"
-        )
+        lines.append(f"- [{finding['severity'].upper()}] {finding['title']}: {finding['claim']}")
     return "\n".join(lines)

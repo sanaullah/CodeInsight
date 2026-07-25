@@ -26,6 +26,9 @@ beforeEach(() => {
   });
   vi.spyOn(apiClient, "finding").mockRejectedValue(new Error("Finding not selected"));
   vi.spyOn(apiClient, "updateFinding").mockRejectedValue(new Error("Finding not selected"));
+  vi.spyOn(apiClient, "snapshots").mockResolvedValue([]);
+  vi.spyOn(apiClient, "architecture").mockRejectedValue(new Error("Snapshot not selected"));
+  vi.spyOn(apiClient, "trace").mockRejectedValue(new Error("Trace not selected"));
 });
 
 describe("application shell", () => {
@@ -112,7 +115,6 @@ describe("application shell", () => {
   });
 
   it.each([
-    ["/architecture", "Architecture explorer"],
     ["/history", "Review history"],
     ["/settings", "Settings"],
     ["/missing", "Page not found"],
@@ -121,6 +123,92 @@ describe("application shell", () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
     expect(screen.getByText(/not yet implemented/i)).toBeInTheDocument();
+  });
+
+  it("explores persisted architecture and traces a directed path", async () => {
+    window.history.replaceState({}, "", "/architecture");
+    const user = userEvent.setup();
+    vi.mocked(apiClient.snapshots).mockResolvedValue([
+      {
+        snapshot_id: "snapshot-1",
+        project_id: "project-1",
+        display_name: "Fixture",
+        git_repository: "git",
+        base_commit: "base",
+        head_commit: "head",
+        dirty: false,
+        metadata: {},
+        created_at: "2026-07-25T12:00:00Z",
+        file_count: 2,
+        symbol_count: 0,
+        edge_count: 1,
+      },
+    ]);
+    const nodes = [
+      {
+        node_id: "file-a",
+        label: "a.py",
+        node_kind: "file" as const,
+        language: "python",
+        classification: "source",
+        support_tier: "parsed",
+        line_count: 10,
+        confidence: 1,
+        derivation: "repository-index" as const,
+        findings: [],
+      },
+      {
+        node_id: "file-b",
+        label: "b.py",
+        node_kind: "file" as const,
+        language: "python",
+        classification: "source",
+        support_tier: "parsed",
+        line_count: 20,
+        confidence: 1,
+        derivation: "repository-index" as const,
+        findings: [{ finding_id: "finding-1", severity: "high" as const }],
+      },
+    ];
+    vi.mocked(apiClient.architecture).mockResolvedValue({
+      snapshot_id: "snapshot-1",
+      display_name: "Fixture",
+      summary: {
+        file_count: 2,
+        language_counts: { python: 2 },
+        classification_counts: { source: 2 },
+        changed_paths: ["a.py"],
+      },
+      nodes,
+      edges: [
+        {
+          edge_id: "edge-1",
+          source_id: "file-a",
+          target_id: "file-b",
+          edge_kind: "imports",
+          confidence: 1,
+          derivation: "repository-index",
+        },
+      ],
+      truncated: false,
+      limits: { depth: 1, node_limit: 250 },
+    });
+    vi.mocked(apiClient.trace).mockResolvedValue({
+      snapshot_id: "snapshot-1",
+      found: true,
+      nodes,
+      edges: [],
+      max_hops: 8,
+    });
+
+    render(<App />);
+    expect(await screen.findByText("Bounded dependency map")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "b.py" }));
+    expect(screen.getByText("repository-index")).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Trace source"), "file-a");
+    await user.selectOptions(screen.getByLabelText("Trace target"), "file-b");
+    await user.click(screen.getByRole("button", { name: "Trace path" }));
+    expect(await screen.findByText("a.py → b.py")).toBeInTheDocument();
   });
 
   it("filters findings through the typed API and records durable review state", async () => {

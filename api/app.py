@@ -262,6 +262,50 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
         writer.writerows(items)
         return PlainTextResponse(output.getvalue(), media_type="text/csv", headers=headers)
 
+    @app.get("/api/v1/snapshots")
+    async def list_snapshots(
+        request: Request, limit: int = Query(default=20, ge=1, le=100)
+    ) -> list[dict]:
+        return await request.app.state.analysis_service.list_snapshots(limit)
+
+    @app.get("/api/v1/snapshots/{snapshot_id}/architecture")
+    async def architecture_graph(
+        snapshot_id: str,
+        request: Request,
+        focus: str | None = Query(default=None, max_length=1000),
+        depth: int = Query(default=1, ge=0, le=4),
+        limit: int = Query(default=250, ge=1, le=1000),
+        edge_kind: str | None = Query(default=None, pattern="^(imports|calls)$"),
+    ) -> dict:
+        graph = await request.app.state.analysis_service.architecture_graph(
+            snapshot_id,
+            focus=focus,
+            depth=depth,
+            limit=limit,
+            edge_kind=edge_kind,
+        )
+        if graph is None:
+            raise HTTPException(status_code=404, detail="Repository snapshot not found")
+        return graph
+
+    @app.get("/api/v1/snapshots/{snapshot_id}/trace")
+    async def architecture_trace(
+        snapshot_id: str,
+        request: Request,
+        source_id: str,
+        target_id: str,
+        max_hops: int = Query(default=8, ge=1, le=20),
+    ) -> dict:
+        trace = await request.app.state.analysis_service.architecture_trace(
+            snapshot_id,
+            source_id=source_id,
+            target_id=target_id,
+            max_hops=max_hops,
+        )
+        if trace is None:
+            raise HTTPException(status_code=404, detail="Repository snapshot not found")
+        return trace
+
     @app.post("/api/v1/recovery", response_model=RecoveryResponse)
     async def recover_analysis_work(request: Request) -> RecoveryResponse:
         current_service: AnalysisService = request.app.state.analysis_service
