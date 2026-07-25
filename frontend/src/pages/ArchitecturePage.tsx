@@ -335,7 +335,7 @@ export function ArchitecturePage() {
   ) : null;
 
   return (
-    <div className="page architecture-page">
+    <div className="page dense-workspace architecture-page">
       <PageHeader
         description="Explore bounded, evidence-derived services, stores, external systems, queues, and typed relations. Static dependencies are shown as static facts, never runtime data flow."
         eyebrow="Repository evidence"

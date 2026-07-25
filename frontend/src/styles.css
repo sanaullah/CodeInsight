@@ -272,6 +272,12 @@ main {
   padding: 28px 32px 72px;
 }
 
+.page.dense-workspace {
+  width: 100%;
+  max-width: none;
+  padding-inline: clamp(20px, 2vw, 44px);
+}
+
 .page-header {
   display: flex;
   align-items: flex-start;
@@ -2285,6 +2291,10 @@ fieldset {
     padding-right: 17px;
     padding-bottom: 52px;
     padding-left: 17px;
+  }
+
+  .page.dense-workspace {
+    padding-inline: 17px;
   }
 
   .page-header {

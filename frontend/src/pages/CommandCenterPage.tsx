@@ -36,7 +36,7 @@ export function CommandCenterPage({ runId }: { runId: string }) {
 
   if (error) {
     return (
-      <div className="page">
+      <div className="page dense-workspace">
         <PageHeader
           description="The durable review could not be loaded."
           title="Review command center"
@@ -48,7 +48,7 @@ export function CommandCenterPage({ runId }: { runId: string }) {
 
   if (loading || !run) {
     return (
-      <div className="page">
+      <div className="page dense-workspace">
         <PageHeader
           description="Loading durable run state from SQLite."
           title="Review command center"
@@ -83,7 +83,7 @@ export function CommandCenterPage({ runId }: { runId: string }) {
     ) ?? [];
 
   return (
-    <div className="page command-center">
+    <div className="page dense-workspace command-center">
       <PageHeader
         actions={
           <div className="header-actions">

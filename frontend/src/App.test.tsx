@@ -241,6 +241,19 @@ describe("application shell", () => {
     view.unmount();
   });
 
+  it.each([
+    ["/history", "Review history"],
+    ["/findings", "Findings"],
+    ["/architecture", "Architecture explorer"],
+  ])("lets the dense %s workspace use the available application width", async (path, heading) => {
+    window.history.replaceState({}, "", path);
+    const view = render(<App />);
+    const pageHeading = await screen.findByRole("heading", { name: heading });
+
+    expect(pageHeading.closest(".page")).toHaveClass("dense-workspace");
+    view.unmount();
+  });
+
   it("explains an API contract mismatch without hiding runtime diagnostics", async () => {
     vi.mocked(apiClient.health).mockResolvedValue({
       ...healthFixture,
@@ -824,6 +837,9 @@ describe("application shell", () => {
     expect(
       await screen.findByRole("heading", { name: "Review command center" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Review command center" }).closest(".page"),
+    ).toHaveClass("dense-workspace");
     expect(screen.getByText("124")).toBeInTheDocument();
     expect(
       screen.getByText(/run status is current; intelligence details are unavailable/i),

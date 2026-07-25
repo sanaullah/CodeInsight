@@ -85,7 +85,7 @@ export function HistoryPage() {
     : null;
 
   return (
-    <div className="page">
+    <div className="page dense-workspace">
       <PageHeader
         description="Compare durable review outcomes and inspect measured trends without overstating partial history."
         eyebrow="Longitudinal intelligence"

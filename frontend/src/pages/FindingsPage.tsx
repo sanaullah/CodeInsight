@@ -146,7 +146,7 @@ export function FindingsPage() {
   }
 
   return (
-    <div className="page">
+    <div className="page dense-workspace">
       <PageHeader
         actions={
           <div className="button-row">

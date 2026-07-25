@@ -43,6 +43,7 @@ beforeAll(() => {
     productionRule(".stat-icon"),
     productionRule(".stat-icon > svg"),
     productionRule(".app-footer"),
+    productionRule(".page.dense-workspace"),
   ].join("\n");
   document.head.append(styleElement);
 });
@@ -137,5 +138,14 @@ describe("application bottom banner regression", () => {
     expect(style.position).toBe("relative");
     expect(style.minHeight).toBe("82px");
     expect(productionRule(".app-footer")).toContain("border-top: 1px solid var(--line);");
+  });
+});
+
+describe("adaptive dense workspace geometry", () => {
+  it("removes the shared page cap while retaining adaptive inline gutters", () => {
+    const rule = productionRule(".page.dense-workspace");
+    expect(rule).toContain("width: 100%;");
+    expect(rule).toContain("max-width: none;");
+    expect(rule).toContain("padding-inline: clamp(20px, 2vw, 44px);");
   });
 });
