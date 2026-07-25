@@ -21,18 +21,21 @@ class SqliteArchitectureRepository:
                 """
                 SELECT snapshots.snapshot_id, snapshots.project_id,
                        projects.display_name, snapshots.git_repository,
-                       snapshots.base_commit, snapshots.head_commit,
+                       snapshots.git_ref, snapshots.base_commit,
+                       snapshots.head_commit, snapshots.parent_snapshot_id,
                        snapshots.dirty, snapshots.metadata_json,
                        snapshots.created_at,
-                       COUNT(DISTINCT files.file_id) AS file_count,
-                       COUNT(DISTINCT symbols.symbol_id) AS symbol_count,
-                       COUNT(DISTINCT edges.edge_id) AS edge_count
+                       (SELECT COUNT(*) FROM files
+                        WHERE files.snapshot_id = snapshots.snapshot_id)
+                           AS file_count,
+                       (SELECT COUNT(*) FROM symbols
+                        WHERE symbols.snapshot_id = snapshots.snapshot_id)
+                           AS symbol_count,
+                       (SELECT COUNT(*) FROM edges
+                        WHERE edges.snapshot_id = snapshots.snapshot_id)
+                           AS edge_count
                 FROM repository_snapshots AS snapshots
                 JOIN projects USING(project_id)
-                LEFT JOIN files USING(snapshot_id)
-                LEFT JOIN symbols USING(snapshot_id)
-                LEFT JOIN edges USING(snapshot_id)
-                GROUP BY snapshots.snapshot_id
                 ORDER BY snapshots.created_at DESC, snapshots.snapshot_id
                 LIMIT ?
                 """,

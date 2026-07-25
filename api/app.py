@@ -313,6 +313,68 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Repository snapshot not found")
         return trace
 
+    @app.get("/api/v1/snapshots/{snapshot_id}/semantic-summary")
+    async def semantic_architecture_summary(snapshot_id: str, request: Request) -> dict:
+        summary = await request.app.state.analysis_service.semantic_architecture_summary(
+            snapshot_id
+        )
+        if summary is None:
+            raise HTTPException(status_code=404, detail="Repository snapshot not found")
+        return summary
+
+    @app.get("/api/v1/snapshots/{snapshot_id}/semantic-architecture")
+    async def semantic_architecture_graph(
+        snapshot_id: str,
+        request: Request,
+        component_kind: list[str] = Query(default=[]),  # noqa: B008
+        relation_kind: list[str] = Query(default=[]),  # noqa: B008
+        focus: str | None = Query(default=None, max_length=1000),
+        depth: int = Query(default=1, ge=0, le=4),
+        limit: int = Query(default=250, ge=1, le=1000),
+    ) -> dict:
+        graph = await request.app.state.analysis_service.semantic_architecture_graph(
+            snapshot_id,
+            component_kinds=tuple(component_kind),
+            relation_kinds=tuple(relation_kind),
+            focus=focus,
+            depth=depth,
+            limit=limit,
+        )
+        if graph is None:
+            raise HTTPException(status_code=404, detail="Repository snapshot not found")
+        return graph
+
+    @app.get(
+        "/api/v1/snapshots/{snapshot_id}/semantic-components/{component_id}"
+    )
+    async def semantic_component_detail(
+        snapshot_id: str, component_id: str, request: Request
+    ) -> dict:
+        component = await request.app.state.analysis_service.semantic_component(
+            snapshot_id, component_id
+        )
+        if component is None:
+            raise HTTPException(status_code=404, detail="Semantic component not found")
+        return component
+
+    @app.get("/api/v1/snapshots/{snapshot_id}/semantic-trace")
+    async def semantic_architecture_trace(
+        snapshot_id: str,
+        request: Request,
+        source_id: str,
+        target_id: str,
+        max_hops: int = Query(default=8, ge=1, le=20),
+    ) -> dict:
+        trace = await request.app.state.analysis_service.semantic_architecture_trace(
+            snapshot_id,
+            source_id=source_id,
+            target_id=target_id,
+            max_hops=max_hops,
+        )
+        if trace is None:
+            raise HTTPException(status_code=404, detail="Repository snapshot not found")
+        return trace
+
     @app.get("/api/v1/history")
     async def analysis_history(
         request: Request,

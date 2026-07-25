@@ -38,6 +38,9 @@ from infrastructure.db.finding_repository import SqliteFindingRepository
 from infrastructure.db.history_repository import SqliteHistoryRepository
 from infrastructure.db.model_call_repository import SqliteModelCallRepository
 from infrastructure.db.run_ledger import SqliteRunLedger
+from infrastructure.db.semantic_architecture_query import (
+    SqliteSemanticArchitectureQuery,
+)
 from infrastructure.db.settings_repository import SqliteSettingsRepository
 from infrastructure.db.snapshot_repository import SqliteSnapshotRepository
 from infrastructure.db.task_repository import SqliteTaskRepository
@@ -368,6 +371,45 @@ class AnalysisService:
         await self.start()
         return await asyncio.to_thread(
             SqliteArchitectureRepository(self._get_ledger()).trace,
+            snapshot_id,
+            **options,
+        )
+
+    async def semantic_architecture_summary(
+        self, snapshot_id: str
+    ) -> dict[str, Any] | None:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteSemanticArchitectureQuery(self._get_ledger()).summary,
+            snapshot_id,
+        )
+
+    async def semantic_architecture_graph(
+        self, snapshot_id: str, **options: Any
+    ) -> dict[str, Any] | None:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteSemanticArchitectureQuery(self._get_ledger()).graph,
+            snapshot_id,
+            **options,
+        )
+
+    async def semantic_component(
+        self, snapshot_id: str, component_id: str
+    ) -> dict[str, Any] | None:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteSemanticArchitectureQuery(self._get_ledger()).component,
+            snapshot_id,
+            component_id,
+        )
+
+    async def semantic_architecture_trace(
+        self, snapshot_id: str, **options: Any
+    ) -> dict[str, Any] | None:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteSemanticArchitectureQuery(self._get_ledger()).trace,
             snapshot_id,
             **options,
         )
