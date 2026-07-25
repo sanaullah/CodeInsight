@@ -39,8 +39,11 @@ def _seed(ledger: SqliteRunLedger, tmp_path: Path) -> None:
             ("project-1", str(tmp_path), "history-fixture", earlier, later),
         )
         connection.execute(
-            """INSERT INTO repository_snapshots VALUES
-               (?, ?, ?, ?, ?, ?, ?, ?, 0, '{}', ?)""",
+            """INSERT INTO repository_snapshots(
+                   snapshot_id, project_id, identity_hash, configuration_hash,
+                   scanner_version, git_repository, base_commit, head_commit,
+                   dirty, metadata_json, created_at
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '{}', ?)""",
             (
                 "snapshot-1",
                 "project-1",

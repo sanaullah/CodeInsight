@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 DEFAULT_BUSY_TIMEOUT_MS = 5_000
 
 _MIGRATION_1 = (
@@ -383,10 +383,216 @@ _MIGRATION_3 = (
     "CREATE INDEX idx_review_presets_name ON review_presets(name)",
 )
 
+_MIGRATION_4 = (
+    "ALTER TABLE repository_snapshots ADD COLUMN parent_snapshot_id TEXT "
+    "REFERENCES repository_snapshots(snapshot_id)",
+    "ALTER TABLE repository_snapshots ADD COLUMN git_ref TEXT",
+    """
+    CREATE TABLE semantic_components (
+        component_id TEXT PRIMARY KEY,
+        snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id)
+            ON DELETE CASCADE,
+        stable_key TEXT NOT NULL,
+        name TEXT NOT NULL,
+        component_kind TEXT NOT NULL CHECK (
+            component_kind IN ('service', 'datastore', 'external_system',
+                               'library', 'queue', 'unknown')
+        ),
+        support_tier TEXT NOT NULL CHECK (
+            support_tier IN ('exact', 'inferred', 'partial', 'unsupported')
+        ),
+        completeness TEXT NOT NULL CHECK (
+            completeness IN ('complete', 'partial', 'unknown', 'unsupported')
+        ),
+        confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        UNIQUE(snapshot_id, stable_key)
+    )
+    """,
+    """
+    CREATE TABLE semantic_boundaries (
+        boundary_id TEXT PRIMARY KEY,
+        snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id)
+            ON DELETE CASCADE,
+        stable_key TEXT NOT NULL,
+        name TEXT NOT NULL,
+        boundary_kind TEXT NOT NULL,
+        support_tier TEXT NOT NULL CHECK (
+            support_tier IN ('exact', 'inferred', 'partial', 'unsupported')
+        ),
+        completeness TEXT NOT NULL CHECK (
+            completeness IN ('complete', 'partial', 'unknown', 'unsupported')
+        ),
+        confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        UNIQUE(snapshot_id, stable_key)
+    )
+    """,
+    """
+    CREATE TABLE semantic_memberships (
+        membership_id TEXT PRIMARY KEY,
+        snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id)
+            ON DELETE CASCADE,
+        component_id TEXT NOT NULL REFERENCES semantic_components(component_id)
+            ON DELETE CASCADE,
+        file_id TEXT REFERENCES files(file_id) ON DELETE CASCADE,
+        symbol_id TEXT REFERENCES symbols(symbol_id) ON DELETE CASCADE,
+        membership_kind TEXT NOT NULL,
+        confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+        provenance_json TEXT NOT NULL DEFAULT '{}',
+        CHECK (file_id IS NOT NULL OR symbol_id IS NOT NULL)
+    )
+    """,
+    """
+    CREATE TABLE semantic_boundary_memberships (
+        boundary_id TEXT NOT NULL REFERENCES semantic_boundaries(boundary_id)
+            ON DELETE CASCADE,
+        component_id TEXT NOT NULL REFERENCES semantic_components(component_id)
+            ON DELETE CASCADE,
+        PRIMARY KEY(boundary_id, component_id)
+    )
+    """,
+    """
+    CREATE TABLE semantic_resources (
+        resource_id TEXT PRIMARY KEY,
+        snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id)
+            ON DELETE CASCADE,
+        component_id TEXT REFERENCES semantic_components(component_id)
+            ON DELETE CASCADE,
+        stable_key TEXT NOT NULL,
+        resource_kind TEXT NOT NULL,
+        name TEXT NOT NULL,
+        locator TEXT,
+        support_tier TEXT NOT NULL CHECK (
+            support_tier IN ('exact', 'inferred', 'partial', 'unsupported')
+        ),
+        completeness TEXT NOT NULL CHECK (
+            completeness IN ('complete', 'partial', 'unknown', 'unsupported')
+        ),
+        confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        UNIQUE(snapshot_id, stable_key)
+    )
+    """,
+    """
+    CREATE TABLE semantic_endpoints (
+        endpoint_id TEXT PRIMARY KEY,
+        snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id)
+            ON DELETE CASCADE,
+        component_id TEXT REFERENCES semantic_components(component_id)
+            ON DELETE CASCADE,
+        stable_key TEXT NOT NULL,
+        protocol TEXT NOT NULL,
+        method TEXT,
+        route TEXT NOT NULL,
+        direction TEXT NOT NULL CHECK (direction IN ('inbound', 'outbound')),
+        support_tier TEXT NOT NULL CHECK (
+            support_tier IN ('exact', 'inferred', 'partial', 'unsupported')
+        ),
+        completeness TEXT NOT NULL CHECK (
+            completeness IN ('complete', 'partial', 'unknown', 'unsupported')
+        ),
+        confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        UNIQUE(snapshot_id, stable_key)
+    )
+    """,
+    """
+    CREATE TABLE semantic_relations (
+        relation_id TEXT PRIMARY KEY,
+        snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id)
+            ON DELETE CASCADE,
+        source_component_id TEXT NOT NULL
+            REFERENCES semantic_components(component_id) ON DELETE CASCADE,
+        target_component_id TEXT NOT NULL
+            REFERENCES semantic_components(component_id) ON DELETE CASCADE,
+        stable_key TEXT NOT NULL,
+        relation_kind TEXT NOT NULL CHECK (
+            relation_kind IN ('request', 'event', 'data_access', 'dependency',
+                              'call', 'unknown')
+        ),
+        transport TEXT,
+        is_async INTEGER NOT NULL DEFAULT 0 CHECK (is_async IN (0, 1)),
+        support_tier TEXT NOT NULL CHECK (
+            support_tier IN ('exact', 'inferred', 'partial', 'unsupported')
+        ),
+        completeness TEXT NOT NULL CHECK (
+            completeness IN ('complete', 'partial', 'unknown', 'unsupported')
+        ),
+        confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        UNIQUE(snapshot_id, stable_key)
+    )
+    """,
+    """
+    CREATE TABLE semantic_provenance (
+        provenance_id TEXT PRIMARY KEY,
+        snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id)
+            ON DELETE CASCADE,
+        entity_kind TEXT NOT NULL CHECK (
+            entity_kind IN ('component', 'boundary', 'membership', 'resource',
+                            'endpoint', 'relation')
+        ),
+        entity_id TEXT NOT NULL,
+        file_id TEXT NOT NULL REFERENCES files(file_id) ON DELETE CASCADE,
+        start_line INTEGER NOT NULL CHECK (start_line >= 1),
+        end_line INTEGER NOT NULL CHECK (end_line >= start_line),
+        derivation TEXT NOT NULL,
+        extractor_version TEXT NOT NULL,
+        confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+        metadata_json TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    """
+    CREATE TABLE semantic_finding_links (
+        link_id TEXT PRIMARY KEY,
+        snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id)
+            ON DELETE CASCADE,
+        finding_id TEXT NOT NULL REFERENCES canonical_findings(finding_id)
+            ON DELETE CASCADE,
+        component_id TEXT REFERENCES semantic_components(component_id)
+            ON DELETE CASCADE,
+        relation_id TEXT REFERENCES semantic_relations(relation_id)
+            ON DELETE CASCADE,
+        resource_id TEXT REFERENCES semantic_resources(resource_id)
+            ON DELETE CASCADE,
+        link_kind TEXT NOT NULL,
+        confidence REAL NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+        metadata_json TEXT NOT NULL DEFAULT '{}',
+        CHECK (
+            component_id IS NOT NULL OR relation_id IS NOT NULL
+            OR resource_id IS NOT NULL
+        ),
+        UNIQUE(snapshot_id, finding_id, component_id, relation_id, resource_id, link_kind)
+    )
+    """,
+    "CREATE INDEX idx_semantic_components_snapshot_kind "
+    "ON semantic_components(snapshot_id, component_kind, stable_key)",
+    "CREATE INDEX idx_semantic_memberships_component "
+    "ON semantic_memberships(snapshot_id, component_id)",
+    "CREATE INDEX idx_semantic_memberships_file "
+    "ON semantic_memberships(snapshot_id, file_id)",
+    "CREATE INDEX idx_semantic_boundaries_snapshot "
+    "ON semantic_boundaries(snapshot_id, boundary_kind)",
+    "CREATE INDEX idx_semantic_resources_component "
+    "ON semantic_resources(snapshot_id, component_id, resource_kind)",
+    "CREATE INDEX idx_semantic_endpoints_component "
+    "ON semantic_endpoints(snapshot_id, component_id, direction)",
+    "CREATE INDEX idx_semantic_relations_source "
+    "ON semantic_relations(snapshot_id, source_component_id, relation_kind)",
+    "CREATE INDEX idx_semantic_relations_target "
+    "ON semantic_relations(snapshot_id, target_component_id, relation_kind)",
+    "CREATE INDEX idx_semantic_provenance_entity "
+    "ON semantic_provenance(snapshot_id, entity_kind, entity_id)",
+    "CREATE INDEX idx_snapshots_project_created "
+    "ON repository_snapshots(project_id, created_at)",
+)
+
 MIGRATIONS: dict[int, tuple[str, tuple[str, ...]]] = {
     1: ("initial durable application ledger", _MIGRATION_1),
     2: ("durable finding review lifecycle", _MIGRATION_2),
     3: ("durable local settings and review presets", _MIGRATION_3),
+    4: ("evidence-derived semantic architecture ledger", _MIGRATION_4),
 }
 
 

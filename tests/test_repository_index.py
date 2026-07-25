@@ -154,9 +154,13 @@ def test_content_and_configuration_changes_invalidate_snapshot_cache(
 
         assert not changed.cached
         assert changed.snapshot.snapshot_id != first.snapshot.snapshot_id
+        assert first.snapshot.git_ref
+        assert changed.snapshot.git_ref == first.snapshot.git_ref
+        assert changed.snapshot.parent_snapshot_id == first.snapshot.snapshot_id
         assert "pkg/b.py" in changed.changed_paths
         assert not python_only.cached
         assert python_only.snapshot.snapshot_id != changed.snapshot.snapshot_id
+        assert python_only.snapshot.parent_snapshot_id == changed.snapshot.snapshot_id
         assert "frontend.ts" not in python_only.snapshot.included_paths
         assert repository.get(first.snapshot.snapshot_id) is not None
         assert repository.get(changed.snapshot.snapshot_id) is not None
@@ -224,6 +228,8 @@ def test_non_git_repository_gets_deterministic_content_snapshot(
         second = indexer.build(root)
 
         assert first.snapshot.git_repository is None
+        assert first.snapshot.git_ref is None
+        assert first.snapshot.parent_snapshot_id is None
         assert not first.snapshot.dirty
         assert second.cached
         assert second.target_paths == ("module.py",)

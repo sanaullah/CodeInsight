@@ -88,8 +88,8 @@ class SqliteSnapshotRepository:
                 INSERT INTO repository_snapshots(
                     snapshot_id, project_id, identity_hash, configuration_hash,
                     scanner_version, git_repository, base_commit, head_commit,
-                    dirty, metadata_json, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    dirty, metadata_json, created_at, parent_snapshot_id, git_ref
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     snapshot.snapshot_id,
@@ -103,6 +103,8 @@ class SqliteSnapshotRepository:
                     int(snapshot.dirty),
                     json.dumps(metadata, sort_keys=True, separators=(",", ":")),
                     snapshot.created_at.isoformat(),
+                    snapshot.parent_snapshot_id,
+                    snapshot.git_ref,
                 ),
             )
             connection.executemany(
@@ -207,6 +209,22 @@ class SqliteSnapshotRepository:
                 WHERE snapshot_id = ?
                 """,
                 (snapshot_id,),
+            ).fetchone()
+            return self._snapshot_record(row) if row else None
+
+    def latest_for_project(self, project_id: str) -> dict[str, Any] | None:
+        with database_connection(self.database_path) as connection:
+            row = connection.execute(
+                """
+                SELECT repository_snapshots.*, projects.canonical_path
+                FROM repository_snapshots
+                JOIN projects USING(project_id)
+                WHERE project_id = ?
+                ORDER BY repository_snapshots.created_at DESC,
+                         repository_snapshots.snapshot_id DESC
+                LIMIT 1
+                """,
+                (project_id,),
             ).fetchone()
             return self._snapshot_record(row) if row else None
 
@@ -358,8 +376,10 @@ class SqliteSnapshotRepository:
             "configuration_hash": str(row["configuration_hash"]),
             "scanner_version": str(row["scanner_version"]),
             "git_repository": row["git_repository"],
+            "git_ref": row["git_ref"],
             "base_commit": row["base_commit"],
             "head_commit": row["head_commit"],
+            "parent_snapshot_id": row["parent_snapshot_id"],
             "dirty": bool(row["dirty"]),
             "metadata": json.loads(row["metadata_json"]),
             "created_at": str(row["created_at"]),

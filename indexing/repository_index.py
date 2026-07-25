@@ -236,6 +236,7 @@ class RepositoryIndexer:
 
         snapshot_id = uuid4().hex
         project_id = hashlib.sha256(os.path.normcase(str(root)).encode()).hexdigest()
+        previous_snapshot = self.repository.latest_for_project(project_id)
         _assign_file_ids(scanned, snapshot_id)
         symbols, calls_by_file, python_trees = _extract_symbols(
             scanned, snapshot_id
@@ -253,8 +254,12 @@ class RepositoryIndexer:
             scanner_version=SCANNER_VERSION,
             created_at=created_at,
             git_repository=git["repository"],
+            git_ref=git["git_ref"],
             base_commit=git["base_commit"],
             head_commit=git["head_commit"],
+            parent_snapshot_id=(
+                str(previous_snapshot["snapshot_id"]) if previous_snapshot else None
+            ),
             dirty=git["dirty"],
             included_paths=tuple(item.relative_path for item in scanned),
             excluded_paths=(),
@@ -378,6 +383,7 @@ def _git_metadata(root: Path, base_commit: str | None) -> dict[str, Any]:
     if repository_check.returncode != 0:
         return {
             "repository": None,
+            "git_ref": None,
             "base_commit": None,
             "head_commit": None,
             "dirty": False,
@@ -386,6 +392,8 @@ def _git_metadata(root: Path, base_commit: str | None) -> dict[str, Any]:
     repository = str(Path(repository_check.stdout.strip()).resolve())
     head_result = _git(root, "rev-parse", "HEAD")
     head_commit = head_result.stdout.strip() if head_result.returncode == 0 else None
+    ref_result = _git(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+    git_ref = ref_result.stdout.strip() if ref_result.returncode == 0 else None
     status = _git(root, "status", "--porcelain=v1", "--untracked-files=all")
     dirty = bool(status.stdout.strip())
     changed: set[str] = set()
@@ -405,6 +413,7 @@ def _git_metadata(root: Path, base_commit: str | None) -> dict[str, Any]:
                 changed.add(PurePosixPath(path).as_posix())
     return {
         "repository": repository,
+        "git_ref": git_ref,
         "base_commit": base_commit,
         "head_commit": head_commit,
         "dirty": dirty,
@@ -673,8 +682,10 @@ def _snapshot_from_record(record: dict[str, Any]) -> RepositorySnapshot:
         scanner_version=record["scanner_version"],
         created_at=datetime.fromisoformat(record["created_at"]),
         git_repository=record["git_repository"],
+        git_ref=record.get("git_ref"),
         base_commit=record["base_commit"],
         head_commit=record["head_commit"],
+        parent_snapshot_id=record.get("parent_snapshot_id"),
         dirty=record["dirty"],
         included_paths=tuple(metadata.get("included_paths", ())),
     )

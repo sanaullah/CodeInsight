@@ -69,8 +69,10 @@ class RepositorySnapshot(ContractModel):
     scanner_version: str
     created_at: datetime
     git_repository: str | None = None
+    git_ref: str | None = None
     base_commit: str | None = None
     head_commit: str | None = None
+    parent_snapshot_id: str | None = None
     dirty: bool = False
     included_paths: tuple[str, ...] = ()
     excluded_paths: tuple[str, ...] = ()
