@@ -215,3 +215,4 @@ frontend/coverage/
 frontend/*.tsbuildinfo
 .npm-cache/
 .test-tmp/
+.codeinsight/

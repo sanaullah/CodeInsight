@@ -78,6 +78,11 @@ def test_index_persists_shared_files_symbols_edges_ownership_and_artifacts(
         "from pkg.b import helper\n\ndef main():\n    return helper() + 1\n",
         encoding="utf-8",
     )
+    (root / ".codeinsight").mkdir()
+    (root / ".codeinsight" / "generated.py").write_text(
+        "raise RuntimeError('application state is not repository source')\n",
+        encoding="utf-8",
+    )
     ledger, repository, indexer = _indexer(tmp_path)
     try:
         result = indexer.build(root, base_commit=commit, neighborhood_depth=1)
@@ -89,6 +94,10 @@ def test_index_persists_shared_files_symbols_edges_ownership_and_artifacts(
         assert result.changed_paths == ("a.py",)
         assert "a.py" in result.target_paths
         assert "pkg/b.py" in result.target_paths
+        assert not any(
+            path.startswith(".codeinsight/")
+            for path in result.snapshot.included_paths
+        )
         files = repository.list_files(result.snapshot.snapshot_id)
         by_path = {item["relative_path"]: item for item in files}
         assert by_path["a.py"]["metadata"]["owners"] == ["@python-team"]

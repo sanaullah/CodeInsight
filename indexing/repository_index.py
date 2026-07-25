@@ -33,6 +33,7 @@ SCANNER_VERSION = "native-index-v1"
 DEFAULT_IGNORE_DIRECTORIES = frozenset(
     {
         ".git",
+        ".codeinsight",
         ".hg",
         ".svn",
         ".venv",
@@ -463,7 +464,14 @@ def _git_metadata(root: Path, base_commit: str | None) -> dict[str, Any]:
         "base_commit": base_commit,
         "head_commit": head_commit,
         "dirty": dirty,
-        "changed_paths": sorted(changed),
+        "changed_paths": sorted(
+            path
+            for path in changed
+            if not any(
+                part in DEFAULT_IGNORE_DIRECTORIES
+                for part in PurePosixPath(path).parts
+            )
+        ),
     }
 
 

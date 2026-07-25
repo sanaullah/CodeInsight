@@ -5,7 +5,10 @@ import sys
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 
+import api.config
+from api.app import create_app
 from api.config import ApiSettings, load_environment
 from indexing.scanners.language_config import (
     Language,
@@ -83,6 +86,29 @@ def test_environment_normalizes_optional_build_identity(
     settings = ApiSettings.from_environment()
     assert settings.build_commit is None
     assert settings.build_time is None
+
+
+def test_default_startup_uses_ignored_checkout_local_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("CODEINSIGHT_DATA_DIR", raising=False)
+    monkeypatch.delenv("CODEINSIGHT_DATABASE_PATH", raising=False)
+    monkeypatch.setattr(api.config, "PROJECT_ROOT", tmp_path)
+
+    with TestClient(create_app()) as client:
+        assert client.get("/api/v1/health").status_code == 200
+
+    assert (tmp_path / ".codeinsight" / "codeinsight.db").is_file()
+
+
+def test_explicit_database_location_overrides_checkout_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_path = tmp_path / "portable" / "ledger.db"
+    monkeypatch.setenv("CODEINSIGHT_DATABASE_PATH", str(database_path))
+    monkeypatch.setattr(api.config, "PROJECT_ROOT", tmp_path / "checkout")
+
+    assert ApiSettings.from_environment().database_path == database_path
 
 
 def test_language_capability_helpers_are_deterministic() -> None:

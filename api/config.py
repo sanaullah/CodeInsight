@@ -9,6 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 VERSION_STRING = "v0.1.0-alpha"
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 
 def load_environment(env_file: str | Path | None = None) -> bool:
@@ -51,9 +52,7 @@ def default_data_directory() -> Path:
     configured = os.getenv("CODEINSIGHT_DATA_DIR")
     if configured:
         return Path(configured).expanduser().resolve()
-    if os.name == "nt" and os.getenv("LOCALAPPDATA"):
-        return Path(os.environ["LOCALAPPDATA"]) / "CodeInsight"
-    return Path.home() / ".local" / "share" / "codeinsight"
+    return PROJECT_ROOT / ".codeinsight"
 
 
 def default_database_path() -> Path:

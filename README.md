@@ -71,6 +71,11 @@ CODEINSIGHT_MODEL_BASE_URL=http://127.0.0.1:1234/v1
 CODEINSIGHT_DEFAULT_MODEL=local-model
 ```
 
+By default, local application state is stored in the ignored
+`.codeinsight/codeinsight.db` file under this checkout. Set
+`CODEINSIGHT_DATA_DIR` or `CODEINSIGHT_DATABASE_PATH` in `.env` to use a
+different durable location.
+
 Initialize or upgrade the single application database explicitly when desired:
 
 ```bash
@@ -85,6 +90,13 @@ Start the application:
 
 ```bash
 uv run uvicorn api.app:app --host 127.0.0.1 --port 8000 --reload
+```
+
+On Windows PowerShell, if `uv` is not installed globally but this checkout's
+locked environment already exists, use the worktree-local executable:
+
+```powershell
+.\.venv\Scripts\uv.exe run uvicorn api.app:app --host 127.0.0.1 --port 8000 --reload
 ```
 
 Open `http://127.0.0.1:8000`. Interactive API documentation is available at
