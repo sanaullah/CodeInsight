@@ -10,12 +10,19 @@
 
 .architecture-semantic-controls {
   display: grid;
-  grid-template-columns: minmax(14rem, 0.9fr) minmax(16rem, 1.4fr) auto;
+  grid-template-columns: minmax(14rem, 0.9fr) minmax(16rem, 1.4fr) minmax(12rem, 0.8fr) auto;
   gap: 0.75rem;
   align-items: end;
   margin-bottom: 1rem;
   padding: 1rem;
   min-width: 0;
+}
+
+.architecture-lens-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.78rem;
 }
 
 .architecture-semantic-controls > label,

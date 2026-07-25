@@ -3,6 +3,7 @@ import type {
   SemanticComponent,
   SemanticTrace,
 } from "../../api/contracts";
+import type { ArchitectureLens } from "./viewState";
 
 export type ArchitectureProjectionStatus =
   | "complete"
@@ -110,4 +111,47 @@ export function graphLayers(graph: SemanticArchitectureGraph): ArchitectureLayer
       count,
       active: true,
     }));
+}
+
+export function applyArchitectureLens(
+  graph: SemanticArchitectureGraph,
+  lens: ArchitectureLens,
+  selectedComponentId: string,
+): SemanticArchitectureGraph {
+  if (lens === "topology") return graph;
+
+  const componentIds = new Set<string>();
+  if (lens === "security") {
+    for (const finding of graph.findings) componentIds.add(finding.component_id);
+  } else if (
+    selectedComponentId &&
+    graph.components.some((component) => component.component_id === selectedComponentId)
+  ) {
+    componentIds.add(selectedComponentId);
+    for (const relation of graph.relations) {
+      if (relation.source_component_id === selectedComponentId) {
+        componentIds.add(relation.target_component_id);
+      }
+      if (relation.target_component_id === selectedComponentId) {
+        componentIds.add(relation.source_component_id);
+      }
+    }
+  }
+
+  return {
+    ...graph,
+    components: graph.components.filter((component) => componentIds.has(component.component_id)),
+    boundaries: graph.boundaries
+      .map((boundary) => ({
+        ...boundary,
+        component_ids: boundary.component_ids.filter((id) => componentIds.has(id)),
+      }))
+      .filter((boundary) => boundary.component_ids.length > 0),
+    relations: graph.relations.filter(
+      (relation) =>
+        componentIds.has(relation.source_component_id) &&
+        componentIds.has(relation.target_component_id),
+    ),
+    findings: graph.findings.filter((finding) => componentIds.has(finding.component_id)),
+  };
 }

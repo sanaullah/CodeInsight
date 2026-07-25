@@ -5,6 +5,7 @@ import type {
   SemanticTrace,
 } from "../../api/contracts";
 import {
+  applyArchitectureLens,
   componentLabel,
   componentMap,
   graphLayers,
@@ -108,5 +109,40 @@ describe("architecture view model", () => {
       { id: "library", label: "library", count: 1, active: true },
       { id: "service", label: "service", count: 2, active: true },
     ]);
+  });
+
+  it("derives security and one-hop impact lenses only from graph evidence", () => {
+    const third = {
+      ...components[1],
+      component_id: "three",
+      stable_key: "store:three",
+      name: "Three",
+      component_kind: "datastore" as const,
+    };
+    const graph = {
+      components: [...components, third],
+      boundaries: [
+        {
+          boundary_id: "boundary",
+          component_ids: ["one", "two", "three"],
+        },
+      ],
+      relations: [
+        { relation_id: "one-two", source_component_id: "one", target_component_id: "two" },
+        { relation_id: "two-three", source_component_id: "two", target_component_id: "three" },
+      ],
+      findings: [{ finding_id: "finding", component_id: "three" }],
+    } as unknown as SemanticArchitectureGraph;
+
+    const security = applyArchitectureLens(graph, "security", "");
+    expect(security.components.map((component) => component.component_id)).toEqual(["three"]);
+    expect(security.relations).toEqual([]);
+    expect(security.boundaries[0].component_ids).toEqual(["three"]);
+
+    const impact = applyArchitectureLens(graph, "impact", "one");
+    expect(impact.components.map((component) => component.component_id)).toEqual(["one", "two"]);
+    expect(impact.relations.map((relation) => relation.relation_id)).toEqual(["one-two"]);
+    expect(applyArchitectureLens(graph, "impact", "missing").components).toEqual([]);
+    expect(applyArchitectureLens(graph, "topology", "")).toBe(graph);
   });
 });

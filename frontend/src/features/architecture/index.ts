@@ -16,6 +16,7 @@ export type {
   TopologyPosition,
 } from "./model";
 export {
+  applyArchitectureLens,
   componentId,
   componentLabel,
   componentMap,
@@ -32,7 +33,7 @@ export type { TopologyViewportProps } from "./TopologyViewport";
 export { TopologyViewport } from "./TopologyViewport";
 export type { TraceRailProps } from "./TraceRail";
 export { TraceRail } from "./TraceRail";
-export type { ArchitectureViewState } from "./viewState";
+export type { ArchitectureLens, ArchitectureViewState } from "./viewState";
 export {
   ARCHITECTURE_VIEW_VERSION,
   COMPONENT_KINDS,

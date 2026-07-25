@@ -612,6 +612,16 @@ describe("application shell", () => {
       ),
     );
     expect(screen.getByText("Snapshot-pinned view link copied.")).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Evidence lens"), "security");
+    expect(
+      await screen.findByRole("heading", { name: "Security finding topology" }),
+    ).toBeInTheDocument();
+    expect(window.location.search).toContain("lens=security");
+    await user.selectOptions(screen.getByLabelText("Evidence lens"), "impact");
+    expect(
+      await screen.findByRole("heading", { name: "Dependency impact neighborhood" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/not a runtime blast-radius claim/i)).toBeInTheDocument();
     const accessibility = await axe.run(view.container, {
       rules: { "color-contrast": { enabled: false } },
     });

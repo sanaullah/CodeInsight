@@ -14,6 +14,7 @@ import { EmptyState, ErrorNotice, PageHeader, Panel, StatCard } from "../compone
 import {
   ArchitectureTextAlternative,
   ArchitectureWorkspace,
+  applyArchitectureLens,
   COMPONENT_KINDS,
   ComponentInspector,
   decodeArchitectureView,
@@ -54,6 +55,7 @@ export function ArchitecturePage() {
   const [trace, setTrace] = useState<SemanticTrace | null>(null);
   const [traceSource, setTraceSource] = useState(initial.traceSource);
   const [traceTarget, setTraceTarget] = useState(initial.traceTarget);
+  const [lens, setLens] = useState(initial.lens);
   const [copyStatus, setCopyStatus] = useState("");
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -64,7 +66,7 @@ export function ArchitecturePage() {
   const [findingError, setFindingError] = useState<string | null>(null);
   const [traceError, setTraceError] = useState<string | null>(null);
 
-  const visibleGraph = useMemo(() => {
+  const layeredGraph = useMemo(() => {
     if (!graph) return null;
     const components = graph.components.filter((component) =>
       componentKinds.has(component.component_kind),
@@ -90,6 +92,10 @@ export function ArchitecturePage() {
       findings: graph.findings.filter((findingLink) => componentIds.has(findingLink.component_id)),
     };
   }, [componentKinds, graph, relationKinds, showBoundaries]);
+  const visibleGraph = useMemo(
+    () => (layeredGraph ? applyArchitectureLens(layeredGraph, lens, selectedId) : null),
+    [layeredGraph, lens, selectedId],
+  );
   const selected =
     visibleGraph?.components.find((component) => component.component_id === selectedId) ?? null;
 
@@ -117,6 +123,7 @@ export function ArchitecturePage() {
       relationKinds,
       traceSource,
       traceTarget,
+      lens,
     });
     const query = route.toString();
     window.history.replaceState({}, "", query ? `/architecture?${query}` : "/architecture");
@@ -129,6 +136,7 @@ export function ArchitecturePage() {
     snapshotId,
     traceSource,
     traceTarget,
+    lens,
   ]);
 
   useEffect(() => {
@@ -247,6 +255,7 @@ export function ArchitecturePage() {
       relationKinds,
       traceSource,
       traceTarget,
+      lens,
     });
     const url = new URL(`/architecture?${route.toString()}`, window.location.href);
     try {
@@ -369,6 +378,17 @@ export function ArchitecturePage() {
             value={focus}
           />
         </label>
+        <label>
+          <span className="architecture-control-label">Evidence lens</span>
+          <select
+            onChange={(event) => setLens(event.target.value as "topology" | "security" | "impact")}
+            value={lens}
+          >
+            <option value="topology">Full topology</option>
+            <option value="security">Components with findings</option>
+            <option value="impact">Selected component impact</option>
+          </select>
+        </label>
         <button
           className="button button-secondary"
           disabled={!focus}
@@ -377,6 +397,13 @@ export function ArchitecturePage() {
         >
           Clear focus
         </button>
+        <p className="architecture-lens-note">
+          {lens === "security"
+            ? "Security lens shows only components linked to persisted findings in this bounded snapshot projection."
+            : lens === "impact"
+              ? "Impact lens shows the selected component and its one-hop typed relations. It is evidence-derived context, not a runtime blast-radius claim."
+              : "Full topology shows the current bounded snapshot projection and active semantic layers."}
+        </p>
         <fieldset className="architecture-relation-filters">
           <legend className="architecture-control-label">Typed relation layers</legend>
           {RELATION_KINDS.map((kind) => (
@@ -510,6 +537,13 @@ export function ArchitecturePage() {
                 onFocusComponent={focusComponent}
                 onSelectComponent={selectComponent}
                 selectedComponentId={selectedId || null}
+                heading={
+                  lens === "security"
+                    ? "Security finding topology"
+                    : lens === "impact"
+                      ? "Dependency impact neighborhood"
+                      : "Semantic topology"
+                }
               />
             }
             trace={traceControls}

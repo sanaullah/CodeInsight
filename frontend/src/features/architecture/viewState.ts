@@ -1,6 +1,8 @@
 import type { SemanticComponentKind, SemanticRelationKind } from "../../api/contracts";
 
 export const ARCHITECTURE_VIEW_VERSION = "1";
+export type ArchitectureLens = "topology" | "security" | "impact";
+const ARCHITECTURE_LENSES: ArchitectureLens[] = ["topology", "security", "impact"];
 
 export const COMPONENT_KINDS: SemanticComponentKind[] = [
   "service",
@@ -29,6 +31,7 @@ export interface ArchitectureViewState {
   relationKinds: Set<SemanticRelationKind>;
   traceSource: string;
   traceTarget: string;
+  lens: ArchitectureLens;
 }
 
 function isComponentKind(value: string): value is SemanticComponentKind {
@@ -53,6 +56,7 @@ function decodeKinds<T extends string>(
 
 export function decodeArchitectureView(search: string): ArchitectureViewState {
   const params = new URLSearchParams(search);
+  const lensParam = params.get("lens");
   return {
     snapshotId: params.get("snapshot") ?? "",
     focus: params.get("focus") ?? "",
@@ -62,6 +66,9 @@ export function decodeArchitectureView(search: string): ArchitectureViewState {
     relationKinds: decodeKinds(params, "relation_kind", RELATION_KINDS, isRelationKind),
     traceSource: params.get("trace_source") ?? "",
     traceTarget: params.get("trace_target") ?? "",
+    lens: ARCHITECTURE_LENSES.includes(lensParam as ArchitectureLens)
+      ? (lensParam as ArchitectureLens)
+      : "topology",
   };
 }
 
@@ -91,5 +98,6 @@ export function encodeArchitectureView(state: ArchitectureViewState): URLSearchP
   if (!state.showBoundaries) params.set("boundaries", "false");
   if (state.traceSource) params.set("trace_source", state.traceSource);
   if (state.traceTarget) params.set("trace_target", state.traceTarget);
+  if (state.lens !== "topology") params.set("lens", state.lens);
   return params;
 }

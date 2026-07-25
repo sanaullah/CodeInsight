@@ -18,13 +18,14 @@ describe("architecture view state", () => {
       relationKinds: new Set(["request", "data_access"]),
       traceSource: "service-orders",
       traceTarget: "store-orders",
+      lens: "impact",
     });
 
     expect(encoded.toString()).toBe(
       "view=1&snapshot=snapshot%2Fone&component_kind=service&component_kind=datastore" +
         "&relation_kind=request&relation_kind=data_access&focus=service%3Aorders" +
         "&selected=service-orders&boundaries=false&trace_source=service-orders" +
-        "&trace_target=store-orders",
+        "&trace_target=store-orders&lens=impact",
     );
     expect(decodeArchitectureView(encoded.toString())).toEqual({
       snapshotId: "snapshot/one",
@@ -35,6 +36,7 @@ describe("architecture view state", () => {
       relationKinds: new Set(["request", "data_access"]),
       traceSource: "service-orders",
       traceTarget: "store-orders",
+      lens: "impact",
     });
   });
 
@@ -48,6 +50,7 @@ describe("architecture view state", () => {
       relationKinds: new Set(),
       traceSource: "",
       traceTarget: "",
+      lens: "topology",
     });
 
     expect(encoded.get("component_kind")).toBe("none");
@@ -55,6 +58,7 @@ describe("architecture view state", () => {
     const decoded = decodeArchitectureView(encoded.toString());
     expect(decoded.componentKinds.size).toBe(0);
     expect(decoded.relationKinds.size).toBe(0);
+    expect(decoded.lens).toBe("topology");
   });
 
   it("keeps legacy and unknown-filter URLs on safe all-visible defaults", () => {
@@ -62,6 +66,7 @@ describe("architecture view state", () => {
 
     expect(decoded.componentKinds).toEqual(new Set(COMPONENT_KINDS));
     expect(decoded.relationKinds).toEqual(new Set(RELATION_KINDS));
+    expect(decoded.lens).toBe("topology");
     expect(ARCHITECTURE_VIEW_VERSION).toBe("1");
   });
 });
