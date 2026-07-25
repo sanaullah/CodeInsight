@@ -77,6 +77,8 @@ def test_semantic_architecture_api_is_bounded_and_traceable(
         assert detail.status_code == 200
         assert detail.json()["endpoints"][0]["route"] == "/orders"
         assert detail.json()["provenance"]
+        assert isinstance(detail.json()["memberships"][0]["provenance"], dict)
+        assert "file_metadata" not in detail.json()["memberships"][0]
 
         trace = client.get(
             f"/api/v1/snapshots/{snapshot_id}/semantic-trace",
@@ -88,6 +90,7 @@ def test_semantic_architecture_api_is_bounded_and_traceable(
         assert trace.status_code == 200
         assert trace.json()["status"] == "complete"
         assert trace.json()["relations"][0]["relation_kind"] == "data_access"
+        assert isinstance(trace.json()["relations"][0]["is_async"], bool)
 
 
 def test_semantic_architecture_api_reports_missing_and_rejects_unbounded_limits(

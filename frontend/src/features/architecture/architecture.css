@@ -1,0 +1,886 @@
+.architecture-page {
+  min-width: 0;
+}
+
+.architecture-semantic-controls {
+  display: grid;
+  grid-template-columns: minmax(14rem, 0.9fr) minmax(16rem, 1.4fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  min-width: 0;
+}
+
+.architecture-semantic-controls > label,
+.architecture-trace-controls label {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.architecture-control-label {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+}
+
+.architecture-relation-filters {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 0.45rem 1rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.75rem 0 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.architecture-relation-filters label {
+  display: inline-flex;
+  gap: 0.4rem;
+  align-items: center;
+  text-transform: capitalize;
+}
+
+.architecture-snapshot-strip {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  min-width: 0;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.architecture-snapshot-strip > div {
+  display: grid;
+  min-width: 0;
+}
+
+.architecture-snapshot-strip strong {
+  color: var(--ink);
+}
+
+.architecture-snapshot-metadata {
+  overflow-wrap: anywhere;
+}
+
+.architecture-trace-shell {
+  min-width: 0;
+  padding: 0.75rem;
+}
+
+.architecture-trace-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(12rem, 1fr)) auto;
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 0.75rem;
+}
+
+.architecture-semantic-workspace {
+  --architecture-border: var(--border, #d7dde8);
+  --architecture-panel: var(--surface, #ffffff);
+  --architecture-muted: var(--text-muted, #637083);
+  --architecture-accent: var(--accent, #5167d8);
+  display: grid;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.architecture-primary-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(12rem, 0.72fr) minmax(0, 2.6fr) minmax(16rem, 1fr);
+  min-width: 0;
+}
+
+.architecture-layer-stack {
+  display: grid;
+  gap: 1rem;
+  align-content: start;
+  min-width: 0;
+}
+
+.architecture-repository-summary {
+  min-width: 0;
+  padding: 1rem;
+}
+
+.architecture-repository-summary h2,
+.architecture-repository-summary h3 {
+  margin: 0 0 0.65rem;
+  font-size: 0.9rem;
+}
+
+.architecture-repository-summary h3 {
+  margin-top: 1rem;
+}
+
+.architecture-repository-summary dl,
+.architecture-repository-summary ul {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.architecture-repository-summary dl div,
+.architecture-repository-summary li {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.architecture-summary-label,
+.architecture-summary-value {
+  margin: 0;
+}
+
+.architecture-summary-label {
+  color: var(--architecture-muted);
+}
+
+.architecture-summary-value {
+  text-align: right;
+}
+
+.architecture-layer-rail,
+.architecture-topology,
+.architecture-inspector,
+.architecture-trace-rail,
+.architecture-text-alternative {
+  background: var(--architecture-panel);
+  border: 1px solid var(--architecture-border);
+  border-radius: 0.85rem;
+  box-shadow: 0 0.5rem 1.5rem rgb(15 23 42 / 5%);
+  min-width: 0;
+  padding: 1rem;
+}
+
+.architecture-section-heading {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  margin-bottom: 0.9rem;
+}
+
+.architecture-section-heading h2,
+.architecture-inspector h3,
+.architecture-text-alternative h3,
+.architecture-trace-rail h3 {
+  margin: 0;
+}
+
+.architecture-section-heading span,
+.architecture-muted,
+.architecture-node small,
+.architecture-inspector-title p,
+.architecture-inspector-section li > span,
+.architecture-text-alternative li > span,
+.architecture-text-alternative li > small {
+  color: var(--architecture-muted);
+}
+
+.architecture-visually-hidden {
+  border: 0;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
+}
+
+.architecture-layer-rail fieldset {
+  border: 0;
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+}
+
+.architecture-layer-option {
+  align-items: center;
+  border-radius: 0.55rem;
+  cursor: pointer;
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  padding: 0.55rem;
+}
+
+.architecture-layer-option:hover,
+.architecture-layer-option:focus-within {
+  background: color-mix(in srgb, var(--architecture-accent) 8%, transparent);
+}
+
+.architecture-layer-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.architecture-layer-copy strong {
+  text-transform: capitalize;
+}
+
+.architecture-layer-copy small {
+  color: var(--architecture-muted);
+}
+
+.architecture-layer-count {
+  background: #eef1f7;
+  border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+  padding: 0.15rem 0.45rem;
+}
+
+.architecture-layer-dot {
+  background: #748198;
+  border-radius: 50%;
+  display: inline-block;
+  height: 0.65rem;
+  width: 0.65rem;
+}
+
+.kind-service,
+.kind-api,
+.kind-controller {
+  --node-color: #566bd8;
+  background-color: #566bd8;
+}
+
+.kind-datastore,
+.kind-database,
+.kind-store {
+  --node-color: #0d8d83;
+  background-color: #0d8d83;
+}
+
+.kind-external_system,
+.kind-external {
+  --node-color: #b66a21;
+  background-color: #b66a21;
+}
+
+.kind-queue,
+.kind-event_bus {
+  --node-color: #8a53b5;
+  background-color: #8a53b5;
+}
+
+.kind-library,
+.kind-module {
+  --node-color: #536276;
+  background-color: #536276;
+}
+
+.architecture-topology {
+  overflow: hidden;
+}
+
+.architecture-viewport-controls,
+.architecture-pan-controls {
+  align-items: center;
+  border: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+}
+
+.architecture-viewport-controls button,
+.architecture-pan-controls button,
+.architecture-icon-button,
+.architecture-action {
+  background: var(--architecture-panel);
+  border: 1px solid var(--architecture-border);
+  border-radius: 0.45rem;
+  color: inherit;
+  cursor: pointer;
+  min-height: 2.25rem;
+  padding: 0.4rem 0.65rem;
+}
+
+.architecture-viewport-controls button:focus-visible,
+.architecture-pan-controls button:focus-visible,
+.architecture-action:focus-visible,
+.architecture-node:focus-visible,
+.architecture-component-list button:focus-visible,
+.architecture-inspector button:focus-visible,
+.architecture-trace-list button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--architecture-accent) 58%, white);
+  outline-offset: 2px;
+}
+
+.architecture-viewport {
+  background:
+    linear-gradient(rgb(255 255 255 / 72%), rgb(255 255 255 / 72%)),
+    repeating-linear-gradient(0deg, transparent 0 23px, #dfe5ef 24px),
+    repeating-linear-gradient(90deg, transparent 0 23px, #dfe5ef 24px);
+  border: 1px solid var(--architecture-border);
+  border-radius: 0.7rem;
+  height: clamp(25rem, 52vh, 42rem);
+  overflow: auto;
+  position: relative;
+}
+
+.architecture-boundary-strip,
+.architecture-boundary-alternative ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0 0 0.75rem;
+  padding: 0;
+  list-style: none;
+}
+
+.architecture-boundary-strip li,
+.architecture-boundary-alternative li {
+  display: grid;
+  gap: 0.1rem;
+  padding: 0.4rem 0.55rem;
+  background: color-mix(in srgb, var(--architecture-accent) 7%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--architecture-accent) 45%, transparent);
+  border-radius: 0.45rem;
+}
+
+.architecture-boundary-strip span,
+.architecture-boundary-alternative span {
+  color: var(--architecture-muted);
+  font-size: 0.72rem;
+}
+
+.architecture-boundary-alternative {
+  margin-bottom: 1rem;
+}
+
+.architecture-canvas {
+  min-height: 100%;
+  min-width: 100%;
+  position: relative;
+  transform-origin: 0 0;
+  transition: transform 120ms ease;
+}
+
+.architecture-edge-layer {
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+  position: absolute;
+}
+
+.architecture-edge-layer line {
+  fill: none;
+  stroke: #75839b;
+  stroke-width: 2;
+}
+
+.architecture-edge-layer marker path {
+  fill: #75839b;
+}
+
+.architecture-edge-layer .static-relation {
+  stroke-dasharray: 5 4;
+}
+
+.architecture-node {
+  --node-color: #748198;
+  background: var(--architecture-panel);
+  border: 1px solid color-mix(in srgb, var(--node-color) 65%, white);
+  border-left: 0.38rem solid var(--node-color);
+  border-radius: 0.65rem;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 0.25rem;
+  height: 5rem;
+  padding: 0.55rem 0.65rem;
+  position: absolute;
+  text-align: left;
+  width: 10.5rem;
+  z-index: 1;
+}
+
+.architecture-node:hover,
+.architecture-node.is-selected {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-color) 22%, transparent);
+}
+
+.architecture-node-kind {
+  color: var(--node-color);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.architecture-node strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.architecture-node-findings {
+  position: absolute;
+  top: -0.55rem;
+  right: -0.55rem;
+  display: grid;
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 0.35rem;
+  place-items: center;
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 800;
+  background: var(--severity-high, #c43c2f);
+  border: 2px solid var(--architecture-panel);
+  border-radius: 999px;
+}
+
+.architecture-pan-controls {
+  justify-content: flex-end;
+  margin-top: 0.55rem;
+}
+
+.architecture-empty {
+  align-items: center;
+  display: grid;
+  inset: 0;
+  justify-content: center;
+  padding: 2rem;
+  position: absolute;
+  text-align: center;
+}
+
+.architecture-notice {
+  border: 1px solid #d9a92e;
+  border-radius: 0.55rem;
+  display: grid;
+  gap: 0.15rem;
+  margin-bottom: 0.75rem;
+  padding: 0.65rem 0.75rem;
+}
+
+.architecture-notice-unsupported {
+  border-color: #b64f60;
+}
+
+.architecture-notice span {
+  color: var(--architecture-muted);
+}
+
+.architecture-inspector {
+  max-height: 52rem;
+  overflow: auto;
+}
+
+.architecture-inspector-title {
+  align-items: flex-start;
+  display: flex;
+  gap: 0.65rem;
+}
+
+.architecture-inspector-title .architecture-layer-dot {
+  flex: 0 0 auto;
+  margin-top: 0.4rem;
+}
+
+.architecture-inspector-title h3,
+.architecture-inspector-title p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.architecture-fact-list {
+  display: grid;
+  gap: 0.45rem;
+  margin: 1rem 0;
+}
+
+.architecture-fact-list div {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.architecture-fact-list dt {
+  color: var(--architecture-muted);
+  text-transform: capitalize;
+}
+
+.architecture-fact-list dd {
+  font-weight: 600;
+  margin: 0;
+  text-align: right;
+}
+
+.architecture-inspector-section {
+  border-top: 1px solid var(--architecture-border);
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.architecture-inspector-section ul,
+.architecture-component-list,
+.architecture-relation-list,
+.architecture-trace-provenance ul {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.architecture-inspector-section li {
+  display: grid;
+  gap: 0.15rem;
+  overflow-wrap: anywhere;
+}
+
+.architecture-inspector-section li > button {
+  align-items: flex-start;
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  gap: 0.45rem;
+  padding: 0;
+  text-align: left;
+}
+
+.architecture-severity {
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  text-transform: uppercase;
+}
+
+.severity-critical,
+.severity-high {
+  background: #fee4e7;
+  color: #9e1d32;
+}
+
+.severity-medium {
+  background: #fff0cc;
+  color: #765000;
+}
+
+.severity-low,
+.severity-info {
+  background: #e5edff;
+  color: #294a9b;
+}
+
+.architecture-text-columns {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+}
+
+.architecture-component-list button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  color: inherit;
+  cursor: pointer;
+  display: grid;
+  padding: 0.55rem;
+  text-align: left;
+  width: 100%;
+}
+
+.architecture-component-list button:hover,
+.architecture-component-list button[aria-current="true"] {
+  background: color-mix(in srgb, var(--architecture-accent) 8%, transparent);
+  border-color: color-mix(in srgb, var(--architecture-accent) 35%, transparent);
+}
+
+.architecture-relation-list li {
+  border-bottom: 1px solid var(--architecture-border);
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.45rem 0;
+}
+
+.architecture-trace-list {
+  align-items: stretch;
+  display: flex;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  overflow-x: auto;
+  padding: 0.35rem 0 0.65rem;
+}
+
+.architecture-trace-list > li {
+  align-items: stretch;
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.architecture-trace-list button {
+  background: var(--architecture-panel);
+  border: 1px solid var(--architecture-border);
+  border-radius: 0.6rem;
+  color: inherit;
+  display: grid;
+  gap: 0.15rem;
+  min-width: 11rem;
+  padding: 0.65rem;
+  text-align: left;
+}
+
+.architecture-trace-list button > span {
+  align-items: center;
+  background: var(--architecture-accent);
+  border-radius: 50%;
+  color: white;
+  display: inline-flex;
+  height: 1.5rem;
+  justify-content: center;
+  width: 1.5rem;
+}
+
+.architecture-trace-relation {
+  align-content: center;
+  color: var(--architecture-muted);
+  display: grid;
+  min-width: 10rem;
+  padding: 0.35rem 0.65rem;
+  text-align: center;
+}
+
+.architecture-trace-relation::before {
+  content: "\2192";
+  font-size: 1.3rem;
+}
+
+.architecture-trace-relation em {
+  font-size: 0.72rem;
+}
+
+.architecture-trace-provenance {
+  border-top: 1px solid var(--architecture-border);
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+}
+
+.architecture-trace-provenance li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.architecture-drawer-scrim {
+  background: rgb(15 23 42 / 42%);
+  border: 0;
+  inset: 0;
+  position: fixed;
+  z-index: 90;
+}
+
+.architecture-finding-drawer {
+  background: var(--architecture-panel);
+  box-shadow: -1rem 0 3rem rgb(15 23 42 / 20%);
+  display: grid;
+  gap: 1rem;
+  grid-template-rows: auto;
+  height: 100dvh;
+  max-width: min(36rem, 100vw);
+  overflow-y: auto;
+  padding: 1.25rem;
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: 100%;
+  z-index: 91;
+}
+
+.architecture-finding-drawer > header {
+  align-items: flex-start;
+  border-bottom: 1px solid var(--architecture-border);
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding-bottom: 0.75rem;
+}
+
+.architecture-finding-drawer h2,
+.architecture-finding-drawer h3,
+.architecture-finding-drawer p {
+  margin-top: 0;
+}
+
+.architecture-eyebrow {
+  color: var(--architecture-accent);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.architecture-finding-summary {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.architecture-evidence-card,
+.architecture-verdict-card {
+  border: 1px solid var(--architecture-border);
+  border-radius: 0.65rem;
+  margin-bottom: 0.7rem;
+  overflow-wrap: anywhere;
+  padding: 0.75rem;
+}
+
+.architecture-evidence-card > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: space-between;
+}
+
+.architecture-evidence-card pre {
+  background: #111827;
+  border-radius: 0.5rem;
+  color: #e5e7eb;
+  overflow: auto;
+  padding: 0.75rem;
+  white-space: pre-wrap;
+}
+
+.architecture-inline-error {
+  color: #a51d34;
+  font-weight: 600;
+}
+
+@media (max-width: 62rem) {
+  .architecture-primary-grid {
+    grid-template-columns: minmax(11rem, 0.65fr) minmax(0, 2fr);
+  }
+
+  .architecture-inspector {
+    grid-column: 1 / -1;
+    max-height: none;
+  }
+
+  .architecture-inspector-section {
+    display: inline-block;
+    margin-right: 1.5rem;
+    vertical-align: top;
+    width: min(20rem, 100%);
+  }
+}
+
+@media (max-width: 48rem) {
+  .architecture-semantic-controls,
+  .architecture-trace-controls {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .architecture-semantic-controls > .button,
+  .architecture-trace-controls > .button {
+    width: 100%;
+  }
+
+  .architecture-snapshot-strip {
+    flex-direction: column;
+  }
+
+  .architecture-primary-grid,
+  .architecture-text-columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .architecture-layer-rail,
+  .architecture-topology,
+  .architecture-inspector,
+  .architecture-trace-rail,
+  .architecture-text-alternative {
+    border-radius: 0.65rem;
+    padding: 0.75rem;
+  }
+
+  .architecture-layer-rail fieldset {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .architecture-viewport {
+    height: 30rem;
+  }
+
+  .architecture-inspector {
+    grid-column: auto;
+  }
+
+  .architecture-section-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 24rem) {
+  .architecture-layer-rail fieldset {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .architecture-layer-option {
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+  }
+
+  .architecture-viewport-controls,
+  .architecture-pan-controls {
+    justify-content: flex-start;
+  }
+
+  .architecture-trace-list {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .architecture-trace-list > li {
+    display: grid;
+  }
+
+  .architecture-trace-relation {
+    min-width: 0;
+    padding: 0.25rem;
+  }
+
+  .architecture-trace-relation::before {
+    content: "\2193";
+  }
+
+  .architecture-finding-drawer {
+    padding: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .architecture-canvas {
+    transition: none;
+  }
+}

@@ -149,6 +149,29 @@ describe("apiClient", () => {
     );
   });
 
+  it("maps bounded semantic architecture contracts with encoded identifiers", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async () => response({}));
+    const filters = new URLSearchParams([
+      ["component_kind", "service"],
+      ["relation_kind", "data_access"],
+      ["focus", "service:orders"],
+      ["depth", "2"],
+      ["limit", "120"],
+    ]);
+
+    await apiClient.semanticSummary("snapshot/one");
+    await apiClient.semanticArchitecture("snapshot/one", filters);
+    await apiClient.semanticComponent("snapshot/one", "service/orders");
+    await apiClient.semanticTrace("snapshot/one", "service/orders", "store/main", 5);
+
+    expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
+      "/api/v1/snapshots/snapshot%2Fone/semantic-summary",
+      `/api/v1/snapshots/snapshot%2Fone/semantic-architecture?${filters}`,
+      "/api/v1/snapshots/snapshot%2Fone/semantic-components/service%2Forders",
+      "/api/v1/snapshots/snapshot%2Fone/semantic-trace?source_id=service%2Forders&target_id=store%2Fmain&max_hops=5",
+    ]);
+  });
+
   it("reports preset deletion conflicts", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(response({}, 409));
     await expect(apiClient.deletePreset("stale", 1)).rejects.toMatchObject({

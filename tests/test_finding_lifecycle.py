@@ -233,6 +233,10 @@ def test_finding_api_filters_mutates_and_exports(tmp_path: Path) -> None:
         assert page.json()["items"][0]["finding_id"] == "finding-1"
         detail = client.get("/api/v1/findings/finding-1")
         assert detail.json()["evidence"][0]["integrity"] == "valid"
+        single_export = client.get("/api/v1/findings/finding-1/export")
+        assert single_export.status_code == 200
+        assert "attachment" in single_export.headers["content-disposition"]
+        assert single_export.json()["finding"]["finding_id"] == "finding-1"
         updated = client.put(
             "/api/v1/findings/finding-1/review",
             json={"review_state": "acknowledged", "expected_version": 0},
@@ -249,6 +253,7 @@ def test_finding_api_filters_mutates_and_exports(tmp_path: Path) -> None:
         assert "attachment" in exported.headers["content-disposition"]
         assert "Authorization is bypassed" in exported.text
         assert client.get("/api/v1/findings/missing").status_code == 404
+        assert client.get("/api/v1/findings/missing/export").status_code == 404
 
 
 def test_finding_query_stays_bounded_with_one_thousand_records(tmp_path: Path) -> None:

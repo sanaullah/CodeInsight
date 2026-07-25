@@ -34,6 +34,10 @@ beforeEach(() => {
   vi.spyOn(apiClient, "snapshots").mockResolvedValue([]);
   vi.spyOn(apiClient, "architecture").mockRejectedValue(new Error("Snapshot not selected"));
   vi.spyOn(apiClient, "trace").mockRejectedValue(new Error("Trace not selected"));
+  vi.spyOn(apiClient, "semanticSummary").mockRejectedValue(new Error("Snapshot not selected"));
+  vi.spyOn(apiClient, "semanticArchitecture").mockRejectedValue(new Error("Snapshot not selected"));
+  vi.spyOn(apiClient, "semanticComponent").mockRejectedValue(new Error("Component not selected"));
+  vi.spyOn(apiClient, "semanticTrace").mockRejectedValue(new Error("Trace not selected"));
   vi.spyOn(apiClient, "history").mockResolvedValue({ items: [], next_cursor: null });
   vi.spyOn(apiClient, "historyTrends").mockResolvedValue({
     days: 30,
@@ -399,7 +403,7 @@ describe("application shell", () => {
     });
   });
 
-  it("explores persisted architecture and traces a directed path", async () => {
+  it("explores semantic architecture, component evidence, and a typed trace", async () => {
     window.history.replaceState({}, "", "/architecture");
     const user = userEvent.setup();
     vi.mocked(apiClient.snapshots).mockResolvedValue([
@@ -418,71 +422,172 @@ describe("application shell", () => {
         edge_count: 1,
       },
     ]);
-    const nodes = [
+    const components = [
       {
-        node_id: "file-a",
-        label: "a.py",
-        node_kind: "file" as const,
-        language: "python",
-        classification: "source",
-        support_tier: "parsed",
-        line_count: 10,
+        component_id: "service-orders",
+        snapshot_id: "snapshot-1",
+        stable_key: "service:orders",
+        name: "Orders service",
+        component_kind: "service" as const,
+        support_tier: "exact" as const,
+        completeness: "complete" as const,
         confidence: 1,
-        derivation: "repository-index" as const,
-        findings: [],
+        metadata: { framework: "FastAPI" },
       },
       {
-        node_id: "file-b",
-        label: "b.py",
-        node_kind: "file" as const,
-        language: "python",
-        classification: "source",
-        support_tier: "parsed",
-        line_count: 20,
-        confidence: 1,
-        derivation: "repository-index" as const,
-        findings: [{ finding_id: "finding-1", severity: "high" as const }],
+        component_id: "store-orders",
+        snapshot_id: "snapshot-1",
+        stable_key: "datastore:orders",
+        name: "Orders database",
+        component_kind: "datastore" as const,
+        support_tier: "inferred" as const,
+        completeness: "partial" as const,
+        confidence: 0.9,
+        metadata: {},
       },
     ];
-    vi.mocked(apiClient.architecture).mockResolvedValue({
+    const relation = {
+      relation_id: "relation-1",
+      source_component_id: "service-orders",
+      target_component_id: "store-orders",
+      stable_key: "data:orders",
+      relation_kind: "data_access" as const,
+      transport: "sqlite",
+      is_async: false,
+      support_tier: "exact" as const,
+      completeness: "complete" as const,
+      confidence: 0.98,
+      metadata: {},
+    };
+    vi.mocked(apiClient.semanticArchitecture).mockResolvedValue({
       snapshot_id: "snapshot-1",
       display_name: "Fixture",
-      summary: {
-        file_count: 2,
-        language_counts: { python: 2 },
-        classification_counts: { source: 2 },
-        changed_paths: ["a.py"],
+      git: { ref: "main", head_commit: "head", dirty: false, parent_snapshot_id: null },
+      created_at: "2026-07-25T12:00:00Z",
+      counts: {
+        services: 1,
+        datastores: 1,
+        external_systems: 0,
+        queues: 0,
+        libraries: 0,
+        unknown: 0,
+        boundaries: 1,
       },
-      nodes,
-      edges: [
+      totals: { files: 2, lines: 30, languages: { Python: 2 } },
+      completeness: { status: "partial", extractor_version: "semantic-v1" },
+      components,
+      boundaries: [],
+      relations: [relation],
+      findings: [
         {
-          edge_id: "edge-1",
-          source_id: "file-a",
-          target_id: "file-b",
-          edge_kind: "imports",
-          confidence: 1,
-          derivation: "repository-index",
+          finding_id: "finding-architecture",
+          title: "Unsafe order query",
+          severity: "high",
+          confidence: 0.94,
+          component_id: "service-orders",
         },
       ],
       truncated: false,
-      limits: { depth: 1, node_limit: 250 },
+      limits: { depth: 1, node_limit: 160 },
     });
-    vi.mocked(apiClient.trace).mockResolvedValue({
+    vi.mocked(apiClient.semanticComponent).mockResolvedValue({
+      ...components[0],
+      memberships: [
+        {
+          membership_id: "membership-1",
+          snapshot_id: "snapshot-1",
+          component_id: "service-orders",
+          file_id: "file-1",
+          symbol_id: null,
+          membership_kind: "implementation",
+          confidence: 1,
+          provenance: {},
+          relative_path: "app/orders.py",
+          language: "Python",
+          line_count: 30,
+          owners: [],
+        },
+      ],
+      resources: [],
+      endpoints: [],
+      provenance: [],
+      findings: [
+        {
+          finding_id: "finding-architecture",
+          title: "Unsafe order query",
+          severity: "high",
+          confidence: 0.94,
+          component_id: "service-orders",
+        },
+      ],
+    });
+    vi.mocked(apiClient.semanticTrace).mockResolvedValue({
       snapshot_id: "snapshot-1",
-      found: true,
-      nodes,
-      edges: [],
+      status: "complete",
+      components,
+      relations: [relation],
+      provenance: [],
       max_hops: 8,
     });
+    vi.mocked(apiClient.finding).mockResolvedValue({
+      finding_id: "finding-architecture",
+      fingerprint: "unsafe-order-query",
+      title: "Unsafe order query",
+      claim: "The order query accepts an unverified identifier.",
+      severity: "high",
+      confidence: 0.94,
+      candidate_ids: ["candidate-architecture"],
+      supporting_evidence_ids: ["evidence-architecture"],
+      conflicting_candidate_ids: [],
+      recommendation: "Validate ownership before querying.",
+      run_id: "run-architecture",
+      review_state: "validated",
+      review_note: null,
+      review_version: 1,
+      reviewed_at: "2026-07-25T12:10:00Z",
+      candidates: [],
+      evidence: [
+        {
+          evidence_id: "evidence-architecture",
+          relative_path: "app/orders.py",
+          content_hash: "abc123",
+          start_line: 12,
+          end_line: 14,
+          evidence_kind: "source_span",
+          provenance: { extractor: "semantic-v1" },
+          excerpt: "find_order(user_id)",
+          integrity: "valid",
+          redacted: false,
+        },
+      ],
+      review_history: [],
+    });
 
-    render(<App />);
-    expect(await screen.findByText("Bounded dependency map")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "b.py" }));
-    expect(screen.getByText("repository-index")).toBeInTheDocument();
-    await user.selectOptions(screen.getByLabelText("Trace source"), "file-a");
-    await user.selectOptions(screen.getByLabelText("Trace target"), "file-b");
-    await user.click(screen.getByRole("button", { name: "Trace path" }));
-    expect(await screen.findByText("a.py → b.py")).toBeInTheDocument();
+    const view = render(<App />);
+    expect(await screen.findByRole("heading", { name: "Semantic topology" })).toBeInTheDocument();
+    expect(screen.getByText(/partial projection/i)).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: /Orders service/i })[0]);
+    expect(await screen.findByText("app/orders.py")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Unsafe order query/i }));
+    expect(await screen.findByRole("dialog", { name: "Unsafe order query" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Export finding" })).toHaveAttribute(
+      "href",
+      "/api/v1/findings/finding-architecture/export",
+    );
+    await user.keyboard("{Escape}");
+    await user.selectOptions(screen.getByLabelText("Trace source"), "service-orders");
+    await user.selectOptions(screen.getByLabelText("Trace target"), "store-orders");
+    await user.click(screen.getByRole("button", { name: "Trace evidence" }));
+    expect((await screen.findAllByText("data access")).length).toBeGreaterThan(0);
+    expect(window.location.search).toContain("selected=service-orders");
+    const accessibility = await axe.run(view.container, {
+      rules: { "color-contrast": { enabled: false } },
+    });
+    expect(
+      accessibility.violations.filter(
+        (violation) => violation.impact === "serious" || violation.impact === "critical",
+      ),
+    ).toEqual([]);
   });
 
   it("filters findings through the typed API and records durable review state", async () => {

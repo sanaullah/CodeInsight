@@ -18,6 +18,10 @@ import type {
   RecoveryResponse,
   ReviewPreset,
   RunComparison,
+  SemanticArchitectureGraph,
+  SemanticComponentDetail,
+  SemanticSummary,
+  SemanticTrace,
   SettingsResponse,
   SnapshotSummary,
 } from "./contracts";
@@ -103,6 +107,38 @@ export const apiClient = {
       `/api/v1/snapshots/${encodeURIComponent(snapshotId)}/trace?source_id=${encodeURIComponent(sourceId)}&target_id=${encodeURIComponent(targetId)}`,
       { signal },
     ),
+  semanticSummary: (snapshotId: string, signal?: AbortSignal) =>
+    request<SemanticSummary>(
+      `/api/v1/snapshots/${encodeURIComponent(snapshotId)}/semantic-summary`,
+      { signal },
+    ),
+  semanticArchitecture: (snapshotId: string, params: URLSearchParams, signal?: AbortSignal) =>
+    request<SemanticArchitectureGraph>(
+      `/api/v1/snapshots/${encodeURIComponent(snapshotId)}/semantic-architecture?${params}`,
+      { signal },
+    ),
+  semanticComponent: (snapshotId: string, componentId: string, signal?: AbortSignal) =>
+    request<SemanticComponentDetail>(
+      `/api/v1/snapshots/${encodeURIComponent(snapshotId)}/semantic-components/${encodeURIComponent(componentId)}`,
+      { signal },
+    ),
+  semanticTrace: (
+    snapshotId: string,
+    sourceId: string,
+    targetId: string,
+    maxHops = 8,
+    signal?: AbortSignal,
+  ) => {
+    const params = new URLSearchParams({
+      source_id: sourceId,
+      target_id: targetId,
+      max_hops: String(maxHops),
+    });
+    return request<SemanticTrace>(
+      `/api/v1/snapshots/${encodeURIComponent(snapshotId)}/semantic-trace?${params}`,
+      { signal },
+    );
+  },
   history: (params: URLSearchParams, signal?: AbortSignal) =>
     request<HistoryPage>(`/api/v1/history?${params}`, { signal }),
   compareRuns: (baselineRunId: string, targetRunId: string, signal?: AbortSignal) =>

@@ -319,6 +319,190 @@ export interface ArchitectureTrace {
   max_hops: number;
 }
 
+export type ArchitectureSupportTier = "exact" | "inferred" | "partial" | "unsupported";
+export type ArchitectureCompleteness = "complete" | "partial" | "unknown" | "unsupported";
+export type SemanticComponentKind =
+  | "service"
+  | "datastore"
+  | "external_system"
+  | "library"
+  | "queue"
+  | "unknown";
+export type SemanticRelationKind =
+  | "request"
+  | "event"
+  | "data_access"
+  | "dependency"
+  | "call"
+  | "unknown";
+
+export interface SemanticGitIdentity {
+  ref: string | null;
+  head_commit: string | null;
+  dirty: boolean;
+  parent_snapshot_id: string | null;
+}
+
+export interface SemanticCompleteness {
+  status: ArchitectureCompleteness;
+  extractor_version: string | null;
+}
+
+export interface SemanticSummary {
+  snapshot_id: string;
+  display_name: string;
+  git: SemanticGitIdentity;
+  created_at: string;
+  counts: {
+    services: number;
+    datastores: number;
+    external_systems: number;
+    queues: number;
+    libraries: number;
+    unknown: number;
+    boundaries: number;
+  };
+  totals: {
+    files: number;
+    lines: number;
+    languages: Record<string, number>;
+  };
+  completeness: SemanticCompleteness;
+}
+
+export interface SemanticFindingLink {
+  finding_id: string;
+  title: string;
+  severity: CanonicalFinding["severity"];
+  confidence: number;
+  component_id: string;
+}
+
+export interface SemanticComponent {
+  component_id: string;
+  snapshot_id: string;
+  stable_key: string;
+  name: string;
+  component_kind: SemanticComponentKind;
+  support_tier: ArchitectureSupportTier;
+  completeness: ArchitectureCompleteness;
+  confidence: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface SemanticBoundary {
+  boundary_id: string;
+  snapshot_id: string;
+  stable_key: string;
+  name: string;
+  boundary_kind: string;
+  support_tier: ArchitectureSupportTier;
+  completeness: ArchitectureCompleteness;
+  confidence: number;
+  component_ids: string[];
+  metadata: Record<string, unknown>;
+}
+
+export interface SemanticRelation {
+  relation_id: string;
+  snapshot_id?: string;
+  source_component_id: string;
+  target_component_id: string;
+  stable_key: string;
+  relation_kind: SemanticRelationKind;
+  transport: string | null;
+  is_async: boolean;
+  support_tier: ArchitectureSupportTier;
+  completeness: ArchitectureCompleteness;
+  confidence: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface SemanticMembership {
+  membership_id: string;
+  snapshot_id: string;
+  component_id: string;
+  file_id: string | null;
+  symbol_id: string | null;
+  membership_kind: string;
+  confidence: number;
+  provenance: Record<string, unknown>;
+  relative_path?: string | null;
+  language?: string | null;
+  line_count?: number | null;
+  owners?: string[];
+}
+
+export interface SemanticResource {
+  resource_id: string;
+  snapshot_id: string;
+  component_id: string | null;
+  stable_key: string;
+  resource_kind: string;
+  name: string;
+  locator: string | null;
+  support_tier: ArchitectureSupportTier;
+  completeness: ArchitectureCompleteness;
+  confidence: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface SemanticEndpoint {
+  endpoint_id: string;
+  snapshot_id: string;
+  component_id: string | null;
+  stable_key: string;
+  protocol: string;
+  method: string | null;
+  route: string;
+  direction: "inbound" | "outbound";
+  support_tier: ArchitectureSupportTier;
+  completeness: ArchitectureCompleteness;
+  confidence: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface SemanticProvenance {
+  provenance_id: string;
+  snapshot_id?: string;
+  entity_kind: "component" | "boundary" | "membership" | "resource" | "endpoint" | "relation";
+  entity_id: string;
+  file_id: string;
+  relative_path: string | null;
+  start_line: number;
+  end_line: number;
+  derivation: string;
+  extractor_version: string;
+  confidence: number;
+  metadata: Record<string, unknown>;
+}
+
+export interface SemanticArchitectureGraph extends SemanticSummary {
+  components: SemanticComponent[];
+  boundaries: SemanticBoundary[];
+  relations: SemanticRelation[];
+  findings: SemanticFindingLink[];
+  truncated: boolean;
+  limits: { depth: number; node_limit: number };
+}
+
+export interface SemanticComponentDetail extends SemanticComponent {
+  memberships: SemanticMembership[];
+  resources: SemanticResource[];
+  endpoints: SemanticEndpoint[];
+  provenance: SemanticProvenance[];
+  findings: SemanticFindingLink[];
+}
+
+export interface SemanticTrace {
+  snapshot_id: string;
+  status: "complete" | "no_path" | "truncated" | "unsupported";
+  components: SemanticComponent[];
+  relations: SemanticRelation[];
+  provenance: SemanticProvenance[];
+  max_hops: number;
+}
+
 export interface HistoryRun {
   run_id: string;
   status: AnalysisStatus;

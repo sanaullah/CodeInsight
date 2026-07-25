@@ -12,10 +12,15 @@ from .run_ledger import SqliteRunLedger
 
 
 def _record(row) -> dict[str, Any]:
-    return {
-        **{key: row[key] for key in row.keys() if key != "metadata_json"},
-        "metadata": json.loads(row["metadata_json"]) if "metadata_json" in row.keys() else {},
-    }
+    ignored = {"metadata_json", "provenance_json", "file_metadata"}
+    record = {key: row[key] for key in row.keys() if key not in ignored}
+    if "metadata_json" in row.keys():
+        record["metadata"] = json.loads(row["metadata_json"])
+    if "provenance_json" in row.keys():
+        record["provenance"] = json.loads(row["provenance_json"])
+    if "is_async" in row.keys():
+        record["is_async"] = bool(row["is_async"])
+    return record
 
 
 class SqliteSemanticArchitectureQuery:

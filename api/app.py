@@ -211,6 +211,18 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Finding not found")
         return detail
 
+    @app.get("/api/v1/findings/{finding_id}/export")
+    async def export_finding(finding_id: str, request: Request) -> JSONResponse:
+        detail = await request.app.state.analysis_service.finding_detail(finding_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="Finding not found")
+        headers = {
+            "Content-Disposition": (
+                f'attachment; filename="codeinsight-finding-{finding_id}.json"'
+            )
+        }
+        return JSONResponse({"finding": detail}, headers=headers)
+
     @app.put("/api/v1/findings/{finding_id}/review")
     async def update_finding_review(
         finding_id: str, payload: FindingReviewUpdate, request: Request
