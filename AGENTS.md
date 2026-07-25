@@ -21,3 +21,12 @@
 - Python changes: run the focused tests, full branch-aware coverage gate, Ruff, and compile checks defined in `pyproject.toml`.
 - Before committing, run `git diff --check`, inspect the staged diff, and record any validation limitation rather than looping on browser setup.
 - Timebox live browser validation to two minutes; deterministic tests and the production build remain required.
+
+## Versioning and releases
+
+- Use Semantic Versioning for product releases; do not bump a version for every commit.
+- `api/config.py` `VERSION_STRING` is the current canonical release-display source used by FastAPI and the frontend footer. Keep Python package metadata (`pyproject.toml`/`uv.lock`) and frontend package metadata synchronized representations only when an authorized release changes that source.
+- Keep the release version separate from `CODEINSIGHT_BUILD_COMMIT` and `CODEINSIGHT_BUILD_TIME`; the footer and diagnostics must expose build identity independently.
+- Before 1.0, use `0.x.y-alpha.N`, `0.x.y-beta.N`, or `0.x.y-rc.N` as appropriate. Patch releases contain compatible fixes; minor releases represent coherent user-facing milestones.
+- Do not declare `1.0.0` until the documented stable-core acceptance criteria and release gates pass.
+- Create tags or hosted releases only with explicit release authorization. Detailed Conventional Commit messages remain independent of release numbering.
