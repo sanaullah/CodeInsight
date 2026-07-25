@@ -306,6 +306,42 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Repository snapshot not found")
         return trace
 
+    @app.get("/api/v1/history")
+    async def analysis_history(
+        request: Request,
+        search: str | None = Query(default=None, max_length=200),
+        status_filter: str | None = Query(
+            default=None,
+            alias="status",
+            pattern="^(queued|running|succeeded|failed|cancelled|needs_attention)$",
+        ),
+        mode: str | None = Query(default=None, pattern="^(quick|deep|security|change-set)$"),
+        cursor: str | None = None,
+        limit: int = Query(default=50, ge=1, le=200),
+    ) -> dict:
+        return await request.app.state.analysis_service.query_history(
+            search=search,
+            status=status_filter,
+            mode=mode,
+            cursor=cursor,
+            limit=limit,
+        )
+
+    @app.get("/api/v1/history/compare")
+    async def compare_history(request: Request, baseline_run_id: str, target_run_id: str) -> dict:
+        comparison = await request.app.state.analysis_service.compare_runs(
+            baseline_run_id, target_run_id
+        )
+        if comparison is None:
+            raise HTTPException(status_code=404, detail="Comparison run not found")
+        return comparison
+
+    @app.get("/api/v1/history/trends")
+    async def history_trends(
+        request: Request, days: int = Query(default=30, ge=1, le=3650)
+    ) -> dict:
+        return await request.app.state.analysis_service.history_trends(days)
+
     @app.post("/api/v1/recovery", response_model=RecoveryResponse)
     async def recover_analysis_work(request: Request) -> RecoveryResponse:
         current_service: AnalysisService = request.app.state.analysis_service

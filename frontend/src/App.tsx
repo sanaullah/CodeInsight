@@ -4,6 +4,7 @@ import { useOperationalState } from "./hooks/useOperationalState";
 import { ArchitecturePage } from "./pages/ArchitecturePage";
 import { CommandCenterPage } from "./pages/CommandCenterPage";
 import { FindingsPage } from "./pages/FindingsPage";
+import { HistoryPage } from "./pages/HistoryPage";
 import { NewReviewPage } from "./pages/NewReviewPage";
 import { OverviewPage } from "./pages/OverviewPage";
 import { PlaceholderPage } from "./pages/PlaceholderPage";
@@ -26,12 +27,7 @@ export function App() {
   } else if (pathname === "/findings") {
     page = <FindingsPage />;
   } else if (pathname === "/history") {
-    page = (
-      <PlaceholderPage
-        description="Cross-run comparison and trends will use stable server-derived fingerprints and aggregates."
-        title="Review history"
-      />
-    );
+    page = <HistoryPage />;
   } else if (pathname === "/settings") {
     page = (
       <PlaceholderPage

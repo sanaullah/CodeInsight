@@ -317,3 +317,58 @@ export interface ArchitectureTrace {
   edges: ArchitectureEdge[];
   max_hops: number;
 }
+
+export interface HistoryRun {
+  run_id: string;
+  status: AnalysisStatus;
+  mode: AnalysisMode;
+  current_stage: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+  snapshot_id: string | null;
+  display_name: string | null;
+  base_commit: string | null;
+  head_commit: string | null;
+  dirty: boolean | null;
+  task_count: number;
+  specialist_count: number;
+  finding_count: number;
+  duration_seconds: number | null;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+}
+
+export interface HistoryPage {
+  items: HistoryRun[];
+  next_cursor: string | null;
+}
+
+export interface RunComparison {
+  baseline_run_id: string;
+  target_run_id: string;
+  new: CanonicalFinding[];
+  resolved: CanonicalFinding[];
+  unchanged: CanonicalFinding[];
+  reopened: CanonicalFinding[];
+  severity_moved: Array<{
+    fingerprint: string;
+    title: string;
+    from_severity: CanonicalFinding["severity"];
+    to_severity: CanonicalFinding["severity"];
+  }>;
+}
+
+export interface HistoryTrends {
+  days: number;
+  partial: boolean;
+  buckets: Array<{
+    date: string;
+    review_count: number;
+    finding_count: number;
+    cost_usd: number;
+    average_duration_seconds: number | null;
+  }>;
+}

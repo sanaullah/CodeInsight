@@ -29,6 +29,13 @@ beforeEach(() => {
   vi.spyOn(apiClient, "snapshots").mockResolvedValue([]);
   vi.spyOn(apiClient, "architecture").mockRejectedValue(new Error("Snapshot not selected"));
   vi.spyOn(apiClient, "trace").mockRejectedValue(new Error("Trace not selected"));
+  vi.spyOn(apiClient, "history").mockResolvedValue({ items: [], next_cursor: null });
+  vi.spyOn(apiClient, "historyTrends").mockResolvedValue({
+    days: 30,
+    partial: true,
+    buckets: [],
+  });
+  vi.spyOn(apiClient, "compareRuns").mockRejectedValue(new Error("Runs not selected"));
 });
 
 describe("application shell", () => {
@@ -115,7 +122,6 @@ describe("application shell", () => {
   });
 
   it.each([
-    ["/history", "Review history"],
     ["/settings", "Settings"],
     ["/missing", "Page not found"],
   ])("establishes the %s route without claiming the future feature is ready", async (path, heading) => {
@@ -123,6 +129,71 @@ describe("application shell", () => {
     render(<App />);
     expect(screen.getByRole("heading", { name: heading })).toBeInTheDocument();
     expect(screen.getByText(/not yet implemented/i)).toBeInTheDocument();
+  });
+
+  it("filters durable history and compares two runs", async () => {
+    window.history.replaceState({}, "", "/history");
+    const user = userEvent.setup();
+    const historyRuns = ["run-001", "run-002"].map((runId, index) => ({
+      run_id: runId,
+      status: "succeeded" as const,
+      mode: index ? ("security" as const) : ("deep" as const),
+      current_stage: "complete",
+      created_at: `2026-07-2${4 + index}T12:00:00Z`,
+      started_at: `2026-07-2${4 + index}T12:00:00Z`,
+      completed_at: `2026-07-2${4 + index}T12:01:00Z`,
+      snapshot_id: "snapshot-1",
+      display_name: "Fixture repository",
+      base_commit: "base",
+      head_commit: "head",
+      dirty: false,
+      task_count: 2,
+      specialist_count: 2,
+      finding_count: index + 1,
+      duration_seconds: 60,
+      input_tokens: 100,
+      output_tokens: 50,
+      total_tokens: 150,
+      cost_usd: 0.01,
+    }));
+    vi.mocked(apiClient.history).mockResolvedValue({
+      items: historyRuns,
+      next_cursor: null,
+    });
+    vi.mocked(apiClient.historyTrends).mockResolvedValue({
+      days: 30,
+      partial: false,
+      buckets: [
+        {
+          date: "2026-07-25",
+          review_count: 2,
+          finding_count: 3,
+          cost_usd: 0.02,
+          average_duration_seconds: 60,
+        },
+      ],
+    });
+    vi.mocked(apiClient.compareRuns).mockResolvedValue({
+      baseline_run_id: "run-001",
+      target_run_id: "run-002",
+      new: [],
+      resolved: [],
+      unchanged: [],
+      reopened: [],
+      severity_moved: [],
+    });
+
+    render(<App />);
+    expect(await screen.findByText("30-day measured trend")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Compare run-001"));
+    await user.click(screen.getByLabelText("Compare run-002"));
+    await user.click(screen.getByRole("button", { name: "Compare selected (2/2)" }));
+    expect(await screen.findByText("Run comparison")).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText("Mode"), "security");
+    await waitFor(() => {
+      const params = vi.mocked(apiClient.history).mock.calls.at(-1)?.[0];
+      expect(params?.get("mode")).toBe("security");
+    });
   });
 
   it("explores persisted architecture and traces a directed path", async () => {

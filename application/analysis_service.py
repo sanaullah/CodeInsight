@@ -32,6 +32,7 @@ from infrastructure.db.architecture_repository import SqliteArchitectureReposito
 from infrastructure.db.artifact_repository import SqliteArtifactRepository
 from infrastructure.db.database import checkpoint_database
 from infrastructure.db.finding_repository import SqliteFindingRepository
+from infrastructure.db.history_repository import SqliteHistoryRepository
 from infrastructure.db.model_call_repository import SqliteModelCallRepository
 from infrastructure.db.run_ledger import SqliteRunLedger
 from infrastructure.db.snapshot_repository import SqliteSnapshotRepository
@@ -366,6 +367,22 @@ class AnalysisService:
             snapshot_id,
             **options,
         )
+
+    async def query_history(self, **filters: Any) -> dict[str, Any]:
+        await self.start()
+        return await asyncio.to_thread(SqliteHistoryRepository(self._get_ledger()).query, **filters)
+
+    async def compare_runs(self, baseline_run_id: str, target_run_id: str) -> dict[str, Any] | None:
+        await self.start()
+        return await asyncio.to_thread(
+            SqliteHistoryRepository(self._get_ledger()).compare,
+            baseline_run_id,
+            target_run_id,
+        )
+
+    async def history_trends(self, days: int) -> dict[str, Any]:
+        await self.start()
+        return await asyncio.to_thread(SqliteHistoryRepository(self._get_ledger()).trends, days)
 
     async def list(self, limit: int = 20) -> list[AnalysisRun]:
         await self.start()

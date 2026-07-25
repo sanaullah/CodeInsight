@@ -10,7 +10,10 @@ import type {
   FindingPage,
   FindingReviewState,
   HealthResponse,
+  HistoryPage,
+  HistoryTrends,
   RecoveryResponse,
+  RunComparison,
   SnapshotSummary,
 } from "./contracts";
 
@@ -95,4 +98,13 @@ export const apiClient = {
       `/api/v1/snapshots/${encodeURIComponent(snapshotId)}/trace?source_id=${encodeURIComponent(sourceId)}&target_id=${encodeURIComponent(targetId)}`,
       { signal },
     ),
+  history: (params: URLSearchParams, signal?: AbortSignal) =>
+    request<HistoryPage>(`/api/v1/history?${params}`, { signal }),
+  compareRuns: (baselineRunId: string, targetRunId: string, signal?: AbortSignal) =>
+    request<RunComparison>(
+      `/api/v1/history/compare?baseline_run_id=${encodeURIComponent(baselineRunId)}&target_run_id=${encodeURIComponent(targetRunId)}`,
+      { signal },
+    ),
+  historyTrends: (days = 30, signal?: AbortSignal) =>
+    request<HistoryTrends>(`/api/v1/history/trends?days=${days}`, { signal }),
 };
