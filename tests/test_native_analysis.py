@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +16,8 @@ from analysis.native.harness import (
     SpecialistOutput,
     SpecialistRequest,
     TrustedSpecialistHarness,
+    _cached_source,
+    _read_verified_source,
 )
 from analysis.native.planning import TRUSTED_TOOLS, RepositoryRolePlanner
 from domain.contracts import AnalysisMode, RoleSpec, RunBudget
@@ -309,6 +312,22 @@ def test_planner_rejects_untrusted_generated_role() -> None:
     )
     with pytest.raises(ValueError, match="untrusted tool"):
         RepositoryRolePlanner.validate_role(role)
+
+
+def test_verified_source_cache_reuses_unchanged_body_and_detects_tamper(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source.py"
+    body = b"VALUE = 1\n"
+    source.write_bytes(body)
+    expected = hashlib.sha256(body).hexdigest()
+    _cached_source.cache_clear()
+    assert _read_verified_source(str(source), expected) == body
+    assert _read_verified_source(str(source), expected) == body
+    assert _cached_source.cache_info().hits == 1
+    source.write_bytes(b"VALUE = 22\n")
+    with pytest.raises(RuntimeError, match="integrity failure"):
+        _read_verified_source(str(source), expected)
 
 
 def test_security_mode_prioritizes_security_with_one_specialist(
@@ -628,7 +647,7 @@ async def test_tampered_source_artifact_fails_before_specialist_call(
         runtime.index.snapshot.snapshot_id,
         (runtime.index.target_paths[0],),
     )[0]
-    Path(first_file["storage_path"]).write_bytes(b"tampered")
+    Path(first_file["storage_path"]).write_bytes(b"tampered")  # noqa: ASYNC240
     client = CompleteClient()
     coordinator = _coordinator(runtime, client)
     try:

@@ -114,6 +114,20 @@ summary { padding: 15px 0; color: var(--muted); font-size: 12px; font-weight: 75
 .timeline li::before { content: ""; position: absolute; width: 8px; height: 8px; left: -22px; top: 4px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 4px var(--teal-soft); }
 .timeline strong { display: block; font-size: 12px; }
 .timeline small { color: var(--muted); font-size: 10px; }
+.intelligence { margin-top: 12px; }
+.intelligence-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.intelligence-summary > div, .intelligence-grid article { padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255, 255, 255, 0.035); }
+.intelligence-summary small, .intelligence-summary strong { display: block; }
+.intelligence-summary strong { margin-top: 4px; overflow-wrap: anywhere; }
+.intelligence-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 8px; }
+.intelligence-grid article.wide { grid-column: 1 / -1; }
+.intelligence-grid h3 { margin: 0 0 10px; font-size: 13px; }
+.detail-list { display: grid; gap: 8px; }
+.detail-item { padding-left: 10px; border-left: 3px solid var(--teal); }
+.detail-item strong, .detail-item small { display: block; }
+.detail-item small { margin-top: 2px; color: var(--muted); }
+.detail-item.accepted { border-color: #45d6a0; }
+.detail-item.rejected, .detail-item.gap { border-color: #f0a65a; }
 .result-card { margin-top: 10px; padding: 22px; border-radius: 18px; background: #17201e; color: #f8f7f2; }
 .result-heading { align-items: center; }
 .result-heading .step-label { color: #8ed0c5; }
@@ -139,6 +153,8 @@ footer a { color: var(--teal); }
   .recent-grid { grid-template-columns: 1fr 1fr; }
 }
 @media (max-width: 600px) {
+  .intelligence-summary, .intelligence-grid { grid-template-columns: 1fr; }
+  .intelligence-grid article.wide { grid-column: auto; }
   .topbar, main, footer { padding-left: 18px; padding-right: 18px; }
   main { padding-top: 38px; }
   h1 { font-size: 46px; }

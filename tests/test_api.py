@@ -12,9 +12,12 @@ from application.analysis_service import AnalysisService, EventSink
 
 class FakeExecutor:
     async def execute(
-        self, request: AnalysisRequest, event_sink: EventSink
+        self, run_id: str, request: AnalysisRequest, event_sink: EventSink
     ) -> dict[str, Any]:
-        event_sink("architecture_ready", {"message": "Architecture indexed"})
+        event_sink(
+            "architecture_ready",
+            {"message": "Architecture indexed", "run_id": run_id},
+        )
         return {"synthesized_report": "API report", "files_scanned": 1}
 
 

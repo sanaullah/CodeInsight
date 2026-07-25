@@ -1,0 +1,154 @@
+"""Provider-neutral, budget-aware model boundary for native analysis."""
+
+from __future__ import annotations
+
+import asyncio
+import json
+from dataclasses import dataclass, field
+from typing import Any, Protocol
+
+
+@dataclass(frozen=True, slots=True)
+class ModelUsage:
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cost_usd: float = 0
+
+    @property
+    def total_tokens(self) -> int:
+        return self.input_tokens + self.output_tokens
+
+    def as_dict(self) -> dict[str, int | float]:
+        return {
+            "input_tokens": self.input_tokens,
+            "output_tokens": self.output_tokens,
+            "total_tokens": self.total_tokens,
+            "cost_usd": self.cost_usd,
+        }
+
+
+@dataclass(frozen=True, slots=True)
+class ModelRequest:
+    run_id: str
+    wave_id: str
+    task_id: str
+    model: str
+    system_prompt: str
+    user_prompt: str
+    response_schema: dict[str, Any]
+    max_output_tokens: int
+    timeout_seconds: float
+    token_budget: int
+    cost_budget_usd: float
+    correlation: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class ModelResponse:
+    content: dict[str, Any]
+    provider: str
+    model: str
+    usage: ModelUsage = ModelUsage()
+    provider_request_id: str | None = None
+
+
+class ModelGateway(Protocol):
+    async def complete(self, request: ModelRequest) -> ModelResponse: ...
+
+
+class ModelBudgetExceeded(RuntimeError):
+    """The durable run or task budget cannot admit another model call."""
+
+
+class ProviderUnavailable(RuntimeError):
+    """The configured provider could not complete a request."""
+
+
+class BoundedModelGateway:
+    """Enforce provider concurrency and per-run token/cost budgets."""
+
+    def __init__(self, gateway: ModelGateway, *, max_concurrent: int = 2) -> None:
+        if max_concurrent < 1:
+            raise ValueError("max_concurrent must be greater than zero")
+        self.gateway = gateway
+        self.max_concurrent = max_concurrent
+        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._usage: dict[str, ModelUsage] = {}
+        self._limits: dict[str, tuple[int, float]] = {}
+        self._lock = asyncio.Lock()
+
+    async def configure_run_budget(
+        self, run_id: str, *, max_tokens: int, max_cost_usd: float
+    ) -> None:
+        async with self._lock:
+            self._limits[run_id] = (max_tokens, max_cost_usd)
+
+    async def complete(self, request: ModelRequest) -> ModelResponse:
+        async with self._lock:
+            used = self._usage.get(request.run_id, ModelUsage())
+            token_limit, cost_limit = self._limits.get(
+                request.run_id, (request.token_budget, request.cost_budget_usd)
+            )
+            if used.total_tokens >= token_limit:
+                raise ModelBudgetExceeded("run token budget is exhausted")
+            if cost_limit == 0 and not isinstance(self.gateway, OfflineModelGateway):
+                raise ModelBudgetExceeded("run cost budget permits only free providers")
+            if cost_limit > 0 and used.cost_usd >= cost_limit:
+                raise ModelBudgetExceeded("run cost budget is exhausted")
+        async with self._semaphore:
+            response = await asyncio.wait_for(
+                self.gateway.complete(request), timeout=request.timeout_seconds
+            )
+        async with self._lock:
+            previous = self._usage.get(request.run_id, ModelUsage())
+            combined = ModelUsage(
+                input_tokens=previous.input_tokens + response.usage.input_tokens,
+                output_tokens=previous.output_tokens + response.usage.output_tokens,
+                cost_usd=previous.cost_usd + response.usage.cost_usd,
+            )
+            token_limit, cost_limit = self._limits.get(
+                request.run_id, (request.token_budget, request.cost_budget_usd)
+            )
+            if combined.total_tokens > token_limit:
+                raise ModelBudgetExceeded("provider response exceeded run token budget")
+            if cost_limit >= 0 and combined.cost_usd > cost_limit:
+                raise ModelBudgetExceeded("provider response exceeded run cost budget")
+            self._usage[request.run_id] = combined
+        return response
+
+    async def usage_for_run(self, run_id: str) -> ModelUsage:
+        async with self._lock:
+            return self._usage.get(run_id, ModelUsage())
+
+
+class OfflineModelGateway:
+    """Deterministic no-network gateway used when no provider is configured."""
+
+    async def complete(self, request: ModelRequest) -> ModelResponse:
+        del request
+        return ModelResponse(
+            content={
+                "analyzed_paths": [],
+                "evidence": [],
+                "findings": [],
+                "unresolved_uncertainty": [
+                    "model-provider:not-configured; repository was indexed but "
+                    "no model-backed specialist analysis ran"
+                ],
+                "usage": {},
+            },
+            provider="offline",
+            model="deterministic-index-only",
+        )
+
+
+def parse_json_object(value: str) -> dict[str, Any]:
+    """Parse a provider response without accepting prose around the contract."""
+
+    try:
+        result = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError("model response is not valid JSON") from exc
+    if not isinstance(result, dict):
+        raise ValueError("model response must be a JSON object")
+    return result

@@ -318,12 +318,6 @@ dependencies = [
     { name = "boto3" },
     { name = "clickhouse-driver" },
     { name = "fastapi" },
-    { name = "langchain" },
-    { name = "langchain-core" },
-    { name = "langchain-litellm" },
-    { name = "langfuse" },
-    { name = "langgraph" },
-    { name = "litellm" },
     { name = "opentelemetry-api" },
     { name = "opentelemetry-exporter-otlp" },
     { name = "opentelemetry-sdk" },
@@ -335,6 +329,18 @@ dependencies = [
     { name = "redis" },
     { name = "tiktoken" },
     { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+legacy = [
+    { name = "langchain" },
+    { name = "langchain-core" },
+    { name = "langchain-litellm" },
+    { name = "langgraph" },
+    { name = "litellm" },
+]
+observability = [
+    { name = "langfuse" },
 ]
 
 [package.dev-dependencies]
@@ -352,12 +358,12 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.43,<2" },
     { name = "clickhouse-driver", specifier = ">=0.2.11,<0.3" },
     { name = "fastapi", specifier = ">=0.139.2,<1" },
-    { name = "langchain", specifier = ">=1.3.14,<2" },
-    { name = "langchain-core", specifier = ">=1.5.1,<2" },
-    { name = "langchain-litellm", specifier = ">=0.7,<1" },
-    { name = "langfuse", specifier = ">=4.14.1,<5" },
-    { name = "langgraph", specifier = ">=1.2.9,<2" },
-    { name = "litellm", specifier = ">=1.91.4,<1.92" },
+    { name = "langchain", marker = "extra == 'legacy'", specifier = ">=1.3.14,<2" },
+    { name = "langchain-core", marker = "extra == 'legacy'", specifier = ">=1.5.1,<2" },
+    { name = "langchain-litellm", marker = "extra == 'legacy'", specifier = ">=0.7,<1" },
+    { name = "langfuse", marker = "extra == 'observability'", specifier = ">=4.14.1,<5" },
+    { name = "langgraph", marker = "extra == 'legacy'", specifier = ">=1.2.9,<2" },
+    { name = "litellm", marker = "extra == 'legacy'", specifier = ">=1.91.4,<1.92" },
     { name = "opentelemetry-api", specifier = ">=1.44,<2" },
     { name = "opentelemetry-exporter-otlp", specifier = ">=1.44,<2" },
     { name = "opentelemetry-sdk", specifier = ">=1.44,<2" },
@@ -370,6 +376,7 @@ requires-dist = [
     { name = "tiktoken", specifier = ">=0.13,<1" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.51,<1" },
 ]
+provides-extras = ["observability", "legacy"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from analysis.native.planning import RepositoryRolePlanner
+from application.model_gateway import ModelBudgetExceeded
 from domain.contracts import (
     EvidenceRef,
     FindingCandidate,
@@ -76,6 +79,9 @@ class SpecialistRequest(ProposalModel):
     task_id: str
     role: RoleSpec
     files: tuple[SpecialistFile, ...]
+    token_budget: int
+    cost_budget_usd: float
+    time_budget_seconds: int
 
 
 class SpecialistClient(Protocol):
@@ -288,11 +294,11 @@ class TrustedSpecialistHarness:
         specialist_files: list[SpecialistFile] = []
         total_bytes = 0
         for item in contexts:
-            body = Path(str(item["storage_path"])).read_bytes()
-            if hashlib.sha256(body).hexdigest() != item["content_hash"]:
-                raise PermanentTaskError(
-                    f"source artifact integrity failure: {item['file_id']}"
-                )
+            body = await asyncio.to_thread(
+                _read_verified_source,
+                str(item["storage_path"]),
+                str(item["content_hash"]),
+            )
             total_bytes += len(body)
             if total_bytes > self.max_context_bytes:
                 raise PermanentTaskError(
@@ -311,15 +317,27 @@ class TrustedSpecialistHarness:
                 )
             )
         context.raise_if_cancelled()
-        raw_output = await self.client.analyze(
-            SpecialistRequest(
-                run_id=lease.run_id,
-                wave_id=lease.wave_id,
-                task_id=lease.task_id,
-                role=role,
-                files=tuple(specialist_files),
+        try:
+            raw_output = await self.client.analyze(
+                SpecialistRequest(
+                    run_id=lease.run_id,
+                    wave_id=lease.wave_id,
+                    task_id=lease.task_id,
+                    role=role,
+                    files=tuple(specialist_files),
+                    token_budget=int(
+                        lease.budget.get("token_budget", role.token_budget)
+                    ),
+                    cost_budget_usd=float(lease.budget.get("cost_budget_usd", 0)),
+                    time_budget_seconds=int(
+                        lease.budget.get(
+                            "time_budget_seconds", role.time_budget_seconds
+                        )
+                    ),
+                )
             )
-        )
+        except ModelBudgetExceeded as exc:
+            raise PermanentTaskError(str(exc)) from exc
         context.raise_if_cancelled()
         try:
             output = (
@@ -387,6 +405,32 @@ def _finding_fingerprint(proposal: FindingProposal) -> str:
     return _stable_hash(
         *(" ".join(value.lower().split()) for value in normalized)
     )
+
+
+def _read_verified_source(storage_path: str, expected_hash: str) -> bytes:
+    path = Path(storage_path)
+    stat = path.stat()
+    return _cached_source(
+        storage_path,
+        expected_hash,
+        stat.st_mtime_ns,
+        stat.st_size,
+    )
+
+
+@lru_cache(maxsize=512)
+def _cached_source(
+    storage_path: str,
+    expected_hash: str,
+    _modified_ns: int,
+    _byte_size: int,
+) -> bytes:
+    body = Path(storage_path).read_bytes()
+    if hashlib.sha256(body).hexdigest() != expected_hash:
+        raise PermanentTaskError(
+            f"source artifact integrity failure: {expected_hash}"
+        )
+    return body
 
 
 def _stable_hash(*values: str) -> str:

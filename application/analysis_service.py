@@ -1,4 +1,4 @@
-"""Durable analysis run coordination behind the HTTP boundary."""
+"""Native durable analysis coordination behind the HTTP boundary."""
 
 from __future__ import annotations
 
@@ -8,26 +8,52 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
-from api.config import default_database_path
-from api.models import AnalysisRequest, AnalysisRun
+from analysis.native.coordinator import NativeAnalysisCoordinator
+from analysis.native.harness import TrustedSpecialistHarness
+from analysis.native.model_client import GatewaySpecialistClient
+from api.config import ApiSettings, default_database_path
+from api.models import (
+    AnalysisIntelligence,
+    AnalysisRequest,
+    AnalysisRun,
+    RecoveryResponse,
+)
+from application.model_gateway import (
+    BoundedModelGateway,
+    ModelGateway,
+    OfflineModelGateway,
+)
+from application.tracing import NullTraceExporter, TraceEvent, TraceExporter
+from domain.contracts import RunStage
+from indexing.repository_index import RepositoryIndexer
+from infrastructure.artifacts.store import FilesystemArtifactStore
+from infrastructure.db.analysis_repository import SqliteAnalysisRepository
+from infrastructure.db.artifact_repository import SqliteArtifactRepository
 from infrastructure.db.database import checkpoint_database
+from infrastructure.db.model_call_repository import SqliteModelCallRepository
 from infrastructure.db.run_ledger import SqliteRunLedger
+from infrastructure.db.snapshot_repository import SqliteSnapshotRepository
+from infrastructure.db.task_repository import SqliteTaskRepository
+from infrastructure.llm.gateway import OpenAICompatibleGateway
+from infrastructure.observability.langfuse import LangfuseTraceExporter
+from workflow.task_scheduler import NativeTaskScheduler
 
 EventSink = Callable[[str, dict[str, Any]], None]
 
 
 class AnalysisExecutor(Protocol):
     async def execute(
-        self, request: AnalysisRequest, event_sink: EventSink
+        self, run_id: str, request: AnalysisRequest, event_sink: EventSink
     ) -> dict[str, Any]: ...
 
 
 class SwarmAnalysisExecutor:
-    """Temporary adapter to the legacy engine during native-workflow migration."""
+    """Inactive compatibility adapter retained until the final removal gate."""
 
     async def execute(
-        self, request: AnalysisRequest, event_sink: EventSink
+        self, run_id: str, request: AnalysisRequest, event_sink: EventSink
     ) -> dict[str, Any]:
+        del run_id
         from analysis.agents.swarm_analysis_orchestrator import SwarmAnalysisOrchestrator
 
         orchestrator = SwarmAnalysisOrchestrator(
@@ -52,8 +78,134 @@ class SwarmAnalysisExecutor:
         )
 
 
+class NativeAnalysisExecutor:
+    """Compose the durable index, scheduler, specialist, and coverage pipeline."""
+
+    def __init__(
+        self,
+        *,
+        ledger: SqliteRunLedger,
+        gateway: ModelGateway,
+        default_model: str,
+        tracer: TraceExporter,
+        artifacts_path: Path,
+        max_task_concurrency: int = 4,
+        offline: bool = False,
+    ) -> None:
+        self.ledger = ledger
+        self.gateway = gateway
+        self.default_model = default_model
+        self.tracer = tracer
+        self.artifacts_path = artifacts_path
+        self.max_task_concurrency = max_task_concurrency
+        self.offline = offline
+
+    async def execute(
+        self, run_id: str, request: AnalysisRequest, event_sink: EventSink
+    ) -> dict[str, Any]:
+        snapshots = SqliteSnapshotRepository(self.ledger)
+        analysis = SqliteAnalysisRepository(self.ledger)
+        tasks = SqliteTaskRepository(self.ledger)
+        artifacts = FilesystemArtifactStore(self.artifacts_path)
+        artifact_records = SqliteArtifactRepository(self.ledger)
+
+        self.ledger.set_stage(run_id, RunStage.DISCOVER)
+        event_sink("repository_discovery_started", {"project": request.project_path})
+        indexer = RepositoryIndexer(
+            snapshots,
+            artifacts,
+            max_files=request.run_budget().max_files,
+        )
+        index = await asyncio.to_thread(
+            indexer.build,
+            request.project_path,
+            selected_directories=tuple(request.selected_directories or ()),
+            include_extensions=tuple(request.file_extensions or ()),
+        )
+        event_sink(
+            "repository_index_ready",
+            {
+                "snapshot_id": index.snapshot.snapshot_id,
+                "cached": index.cached,
+                "file_count": index.file_count,
+                "symbol_count": index.symbol_count,
+                "edge_count": index.edge_count,
+                "target_count": len(index.target_paths),
+            },
+        )
+        specialist = GatewaySpecialistClient(
+            gateway=self.gateway,
+            model=request.model_name or self.default_model,
+            calls=SqliteModelCallRepository(self.ledger),
+            traces=self.tracer,
+        )
+        harness = TrustedSpecialistHarness(
+            client=specialist,
+            snapshots=snapshots,
+            analysis=analysis,
+            artifacts=artifacts,
+            artifact_records=artifact_records,
+            event_sink=event_sink,
+        )
+        scheduler = NativeTaskScheduler(
+            tasks,
+            {"specialist_analysis": harness.execute},
+            max_concurrent=min(self.max_task_concurrency, request.max_agents),
+            event_sink=event_sink,
+        )
+        coordinator = NativeAnalysisCoordinator(
+            ledger=self.ledger,
+            tasks=tasks,
+            snapshots=snapshots,
+            analysis=analysis,
+            scheduler=scheduler,
+        )
+        budget = request.run_budget()
+        if self.offline and budget.max_waves > 1:
+            budget = budget.model_copy(update={"max_waves": 1})
+        if isinstance(self.gateway, BoundedModelGateway):
+            await self.gateway.configure_run_budget(
+                run_id,
+                max_tokens=budget.max_tokens,
+                max_cost_usd=budget.max_cost_usd,
+            )
+        result = await coordinator.execute(
+            run_id=run_id,
+            snapshot=index.snapshot,
+            target_paths=index.target_paths,
+            mode=request.mode,
+            budget=budget,
+        )
+        intelligence = analysis.run_intelligence(run_id) or {}
+        findings = [item.model_dump(mode="json") for item in result.findings]
+        coverage = [item.model_dump(mode="json") for item in result.coverage]
+        return {
+            "synthesized_report": _synthesize(findings, coverage),
+            "snapshot": {
+                "snapshot_id": index.snapshot.snapshot_id,
+                "cached": index.cached,
+                "file_count": index.file_count,
+                "symbol_count": index.symbol_count,
+                "edge_count": index.edge_count,
+                "changed_paths": list(index.changed_paths),
+                "target_paths": list(index.target_paths),
+            },
+            "findings": findings,
+            "coverage": coverage,
+            "wave_count": result.wave_count,
+            "failed_task_count": result.failed_task_count,
+            "usage": intelligence.get("usage", {}),
+            "provider_mode": "index-only" if self.offline else "model-backed",
+            "outcome": (
+                "needs_attention"
+                if result.failed_task_count
+                else "succeeded"
+            ),
+        }
+
+
 class AnalysisService:
-    """Runs bounded work while SQLite remains the authoritative lifecycle state."""
+    """Own process-local workers while SQLite remains authoritative."""
 
     def __init__(
         self,
@@ -62,15 +214,27 @@ class AnalysisService:
         database_path: str | Path | None = None,
         max_concurrent: int = 2,
         event_history_limit: int = 200,
+        settings: ApiSettings | None = None,
+        gateway: ModelGateway | None = None,
+        tracer: TraceExporter | None = None,
     ) -> None:
         if max_concurrent < 1:
             raise ValueError("max_concurrent must be greater than zero")
         if event_history_limit < 1:
             raise ValueError("event_history_limit must be greater than zero")
-        self.executor = executor or SwarmAnalysisExecutor()
-        self.database_path = Path(database_path or default_database_path()).resolve()
+        self.settings = settings or ApiSettings(
+            database_path=Path(database_path or default_database_path()).resolve(),
+            max_concurrent_analyses=max_concurrent,
+            event_history_limit=event_history_limit,
+        )
+        self.executor = executor
+        self.database_path = Path(
+            database_path or self.settings.database_path
+        ).resolve()
         self.max_concurrent = max_concurrent
         self.event_history_limit = event_history_limit
+        self._configured_gateway = gateway
+        self._tracer = tracer
         self._ledger: SqliteRunLedger | None = None
         self._semaphore = asyncio.Semaphore(max_concurrent)
         self._tasks: dict[str, asyncio.Task[None]] = {}
@@ -78,6 +242,7 @@ class AnalysisService:
         self._start_lock = asyncio.Lock()
         self._started = False
         self._closing = False
+        self._startup_recovered = 0
 
     def _get_ledger(self) -> SqliteRunLedger:
         if self._ledger is None:
@@ -87,19 +252,77 @@ class AnalysisService:
             )
         return self._ledger
 
+    def _get_tracer(self) -> TraceExporter:
+        if self._tracer is not None:
+            return self._tracer
+        if (
+            self.settings.langfuse_enabled
+            and self.settings.langfuse_public_key
+            and self.settings.langfuse_secret_key
+        ):
+            self._tracer = LangfuseTraceExporter(
+                public_key=self.settings.langfuse_public_key,
+                secret_key=self.settings.langfuse_secret_key,
+                host=self.settings.langfuse_host,
+                capture_content=self.settings.langfuse_capture_content,
+            )
+        else:
+            self._tracer = NullTraceExporter()
+        return self._tracer
+
+    def _get_executor(self) -> AnalysisExecutor:
+        if self.executor is not None:
+            return self.executor
+        offline = self._configured_gateway is None and not self.settings.model_base_url
+        provider: ModelGateway = self._configured_gateway or (
+            OpenAICompatibleGateway(
+                base_url=self.settings.model_base_url,
+                api_key=self.settings.model_api_key,
+            )
+            if self.settings.model_base_url
+            else OfflineModelGateway()
+        )
+        bounded = BoundedModelGateway(
+            provider,
+            max_concurrent=self.settings.max_concurrent_model_calls,
+        )
+        self.executor = NativeAnalysisExecutor(
+            ledger=self._get_ledger(),
+            gateway=bounded,
+            default_model=self.settings.default_model,
+            tracer=self._get_tracer(),
+            artifacts_path=self.database_path.parent / "artifacts",
+            offline=offline,
+        )
+        return self.executor
+
     @property
     def active_count(self) -> int:
         return self._get_ledger().count_active()
 
-    async def start(self) -> int:
-        """Initialize storage, recover interrupted work, and resume queued runs."""
+    @property
+    def provider_configured(self) -> bool:
+        return self._configured_gateway is not None or bool(
+            self.settings.model_base_url
+        )
 
+    @property
+    def langfuse_enabled(self) -> bool:
+        return bool(
+            self.settings.langfuse_enabled
+            and self.settings.langfuse_public_key
+            and self.settings.langfuse_secret_key
+        )
+
+    async def start(self) -> int:
         async with self._start_lock:
             if self._started:
                 return 0
             self._closing = False
             ledger = self._get_ledger()
             recovered = ledger.recover_interrupted()
+            SqliteTaskRepository(ledger).recover_expired()
+            self._startup_recovered = recovered
             self._started = True
             for run_id in ledger.list_queued_run_ids():
                 await self._schedule(run_id)
@@ -111,10 +334,13 @@ class AnalysisService:
             update={"project_path": self._resolve_project_path(request.project_path)}
         )
         run_id = uuid4().hex
+        budget = normalized_request.run_budget()
         record = self._get_ledger().create_run(
             run_id=run_id,
             submission_key=run_id,
             request=normalized_request.model_dump(mode="json"),
+            mode=normalized_request.mode.value,
+            budget=budget.model_dump(mode="json"),
         )
         await self._schedule(record["run_id"])
         return self._to_model(record)
@@ -123,6 +349,11 @@ class AnalysisService:
         await self.start()
         record = self._get_ledger().get_run(run_id)
         return self._to_model(record) if record else None
+
+    async def intelligence(self, run_id: str) -> AnalysisIntelligence | None:
+        await self.start()
+        record = SqliteAnalysisRepository(self._get_ledger()).run_intelligence(run_id)
+        return AnalysisIntelligence.model_validate(record) if record else None
 
     async def list(self, limit: int = 20) -> list[AnalysisRun]:
         await self.start()
@@ -135,6 +366,7 @@ class AnalysisService:
         ledger = self._get_ledger()
         if ledger.get_run(run_id) is None:
             return None
+        SqliteTaskRepository(ledger).request_run_cancellation(run_id)
         ledger.cancel(run_id)
         async with self._task_lock:
             task = self._tasks.get(run_id)
@@ -143,9 +375,22 @@ class AnalysisService:
         record = ledger.get_run(run_id)
         return self._to_model(record) if record else None
 
-    async def close(self) -> None:
-        """Stop local workers while leaving unfinished work recoverable."""
+    async def recover(self) -> RecoveryResponse:
+        await self.start()
+        repository = SqliteTaskRepository(self._get_ledger())
+        recovered_tasks = repository.recover_expired()
+        queued = self._get_ledger().list_queued_run_ids()
+        for run_id in queued:
+            await self._schedule(run_id)
+        result = RecoveryResponse(
+            recovered_runs=self._startup_recovered,
+            recovered_tasks=recovered_tasks,
+            scheduled_runs=len(queued),
+        )
+        self._startup_recovered = 0
+        return result
 
+    async def close(self) -> None:
         self._closing = True
         async with self._task_lock:
             tasks = list(self._tasks.values())
@@ -153,6 +398,8 @@ class AnalysisService:
             task.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        if self._tracer is not None:
+            self._tracer.close()
         if self._ledger is not None:
             self._ledger.close()
             checkpoint_database(self.database_path)
@@ -187,9 +434,23 @@ class AnalysisService:
 
                 def event_sink(event_type: str, data: dict[str, Any]) -> None:
                     ledger.append_event(run_id, event_type, data)
+                    self._get_tracer().emit(
+                        TraceEvent(
+                            name=event_type,
+                            run_id=run_id,
+                            wave_id=data.get("wave_id"),
+                            task_id=data.get("task_id"),
+                            attributes=data,
+                        )
+                    )
 
-                result = await self.executor.execute(request, event_sink)
-                ledger.succeed(run_id, result)
+                result = await self._get_executor().execute(
+                    run_id, request, event_sink
+                )
+                if result.get("outcome") == "needs_attention":
+                    ledger.needs_attention(run_id, result)
+                else:
+                    ledger.succeed(run_id, result)
         except asyncio.CancelledError:
             if self._closing:
                 ledger.requeue_interrupted(run_id)
@@ -212,3 +473,19 @@ class AnalysisService:
     @staticmethod
     def _to_model(record: dict[str, Any]) -> AnalysisRun:
         return AnalysisRun.model_validate(record)
+
+
+def _synthesize(
+    findings: list[dict[str, Any]], coverage: list[dict[str, Any]]
+) -> str:
+    if not findings:
+        gaps = coverage[-1].get("remaining_gaps", []) if coverage else []
+        suffix = f" Remaining gaps: {', '.join(gaps)}." if gaps else ""
+        return "No evidence-backed findings were accepted." + suffix
+    lines = [f"{len(findings)} evidence-backed finding(s) accepted:"]
+    for finding in findings:
+        lines.append(
+            f"- [{finding['severity'].upper()}] {finding['title']}: "
+            f"{finding['claim']}"
+        )
+    return "\n".join(lines)

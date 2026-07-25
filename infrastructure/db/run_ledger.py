@@ -315,6 +315,37 @@ class SqliteRunLedger:
 
         return self._write(operation)
 
+    def needs_attention(self, run_id: str, result: dict[str, Any]) -> bool:
+        timestamp = _utc_now()
+
+        def operation(connection: sqlite3.Connection) -> bool:
+            cursor = connection.execute(
+                """
+                UPDATE runs
+                SET status = 'needs_attention', result_json = ?,
+                    completed_at = ?, updated_at = ?
+                WHERE run_id = ? AND status = 'running'
+                """,
+                (
+                    json.dumps(result, sort_keys=True, separators=(",", ":")),
+                    timestamp,
+                    timestamp,
+                    run_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                return False
+            self._append_event(
+                connection,
+                run_id,
+                "analysis_needs_attention",
+                {"failed_task_count": result.get("failed_task_count", 0)},
+                created_at=timestamp,
+            )
+            return True
+
+        return self._write(operation)
+
     def fail(self, run_id: str, error: str) -> bool:
         timestamp = _utc_now()
 
@@ -449,6 +480,9 @@ class SqliteRunLedger:
             "run_id": str(row["run_id"]),
             "status": str(row["status"]),
             "request": json.loads(row["request_json"]),
+            "current_stage": row["current_stage"],
+            "snapshot_id": row["snapshot_id"],
+            "mode": str(row["mode"]),
             "created_at": str(row["created_at"]),
             "started_at": row["started_at"],
             "completed_at": row["completed_at"],

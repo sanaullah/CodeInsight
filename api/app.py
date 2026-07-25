@@ -12,11 +12,13 @@ from fastapi.staticfiles import StaticFiles
 from api.config import ApiSettings
 from api.models import (
     AnalysisAccepted,
+    AnalysisIntelligence,
     AnalysisRequest,
     AnalysisRun,
     CapabilitiesResponse,
     HealthResponse,
     LanguageCapability,
+    RecoveryResponse,
 )
 from application.analysis_service import AnalysisService
 from infrastructure.utils.config.env_loader import load_env
@@ -63,6 +65,7 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
         database_path=settings.database_path,
         max_concurrent=settings.max_concurrent_analyses,
         event_history_limit=settings.event_history_limit,
+        settings=settings,
     )
 
     @asynccontextmanager
@@ -102,7 +105,11 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
 
     @app.get("/api/v1/capabilities", response_model=CapabilitiesResponse)
     async def capabilities() -> CapabilitiesResponse:
-        return CapabilitiesResponse(languages=_language_capabilities())
+        return CapabilitiesResponse(
+            languages=_language_capabilities(),
+            model_provider_configured=analysis_service.provider_configured,
+            langfuse_enabled=analysis_service.langfuse_enabled,
+        )
 
     @app.post(
         "/api/v1/analyses",
@@ -138,6 +145,19 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="Analysis run not found")
         return run
 
+    @app.get(
+        "/api/v1/analyses/{run_id}/intelligence",
+        response_model=AnalysisIntelligence,
+    )
+    async def get_analysis_intelligence(
+        run_id: str, request: Request
+    ) -> AnalysisIntelligence:
+        current_service: AnalysisService = request.app.state.analysis_service
+        intelligence = await current_service.intelligence(run_id)
+        if intelligence is None:
+            raise HTTPException(status_code=404, detail="Analysis run not found")
+        return intelligence
+
     @app.delete("/api/v1/analyses/{run_id}", response_model=AnalysisRun)
     async def cancel_analysis(run_id: str, request: Request) -> AnalysisRun:
         current_service: AnalysisService = request.app.state.analysis_service
@@ -145,6 +165,11 @@ def create_app(service: AnalysisService | None = None) -> FastAPI:
         if run is None:
             raise HTTPException(status_code=404, detail="Analysis run not found")
         return run
+
+    @app.post("/api/v1/recovery", response_model=RecoveryResponse)
+    async def recover_analysis_work(request: Request) -> RecoveryResponse:
+        current_service: AnalysisService = request.app.state.analysis_service
+        return await current_service.recover()
 
     return app
 

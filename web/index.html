@@ -171,6 +171,28 @@
               <button class="quiet-button hidden" id="cancel-run" type="button">Cancel</button>
             </div>
             <ol class="timeline" id="timeline"></ol>
+            <section class="intelligence hidden" id="intelligence">
+              <div class="intelligence-summary">
+                <div><small>Stage</small><strong id="current-stage">—</strong></div>
+                <div><small>Waves</small><strong id="wave-count">0</strong></div>
+                <div><small>Tasks</small><strong id="task-summary">0</strong></div>
+                <div><small>Model usage</small><strong id="model-usage">0 tokens</strong></div>
+              </div>
+              <div class="intelligence-grid">
+                <article>
+                  <h3>Planned specialists</h3>
+                  <div class="detail-list" id="role-list"></div>
+                </article>
+                <article>
+                  <h3>Coverage and gaps</h3>
+                  <div class="detail-list" id="coverage-list"></div>
+                </article>
+                <article class="wide">
+                  <h3>Evidence-backed findings</h3>
+                  <div class="detail-list" id="finding-list"></div>
+                </article>
+              </div>
+            </section>
             <div class="result-card hidden" id="result-card">
               <div class="result-heading">
                 <div>

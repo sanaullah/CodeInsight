@@ -32,6 +32,7 @@ class NativeAnalysisResult:
     findings: tuple[CanonicalFinding, ...]
     coverage: tuple[CoverageAssessment, ...]
     wave_count: int
+    failed_task_count: int = 0
 
 
 class NativeAnalysisCoordinator:
@@ -106,28 +107,48 @@ class NativeAnalysisCoordinator:
                 findings=tuple(self.analysis.list_canonical_findings(run_id)),
                 coverage=tuple(existing_coverage),
                 wave_count=self.analysis.wave_count(run_id),
+                failed_task_count=sum(
+                    record["status"] != "succeeded"
+                    for assessment in existing_coverage
+                    for record in self.analysis.task_records(
+                        run_id, assessment.wave_id
+                    )
+                ),
             )
         total_tasks = sum(
             len(self.analysis.task_records(run_id, assessment.wave_id))
             for assessment in existing_coverage
         )
         coverage: list[CoverageAssessment] = list(existing_coverage)
-        next_plan: WavePlan | None = None
+        next_plan = self.analysis.incomplete_wave_plan(run_id)
+        resuming_wave_id = next_plan.wave_id if next_plan else None
+        if next_plan is not None:
+            total_tasks += len(next_plan.tasks)
         remaining_gaps: tuple[str, ...] = (
             existing_coverage[-1].remaining_gaps if existing_coverage else ()
         )
-        wave_number = max(1, self.analysis.wave_count(run_id) + 1)
+        wave_number = (
+            next_plan.wave_number
+            if next_plan is not None
+            else max(1, self.analysis.wave_count(run_id) + 1)
+        )
+        failed_task_count = 0
 
-        while wave_number <= budget.max_waves and total_tasks < budget.max_tasks:
+        while wave_number <= budget.max_waves and (
+            resuming_wave_id is not None or total_tasks < budget.max_tasks
+        ):
             self._stage(run_id, RunStage.PLAN_WAVE)
-            remaining_task_budget = budget.max_tasks - total_tasks
-            wave_budget = budget.model_copy(
-                update={
-                    "max_specialists": min(
-                        budget.max_specialists, remaining_task_budget
-                    )
-                }
-            )
+            if resuming_wave_id is not None:
+                wave_budget = budget
+            else:
+                remaining_task_budget = budget.max_tasks - total_tasks
+                wave_budget = budget.model_copy(
+                    update={
+                        "max_specialists": min(
+                            budget.max_specialists, remaining_task_budget
+                        )
+                    }
+                )
             plan = next_plan or self.planner.plan(
                 run_id=run_id,
                 snapshot=snapshot,
@@ -139,8 +160,20 @@ class NativeAnalysisCoordinator:
                 remaining_gaps=remaining_gaps,
             )
             next_plan = None
-            self._persist_plan(plan, wave_budget)
-            total_tasks += len(plan.tasks)
+            if plan.wave_id == resuming_wave_id:
+                self.ledger.append_event(
+                    run_id,
+                    "wave_resumed",
+                    {
+                        "wave_id": plan.wave_id,
+                        "wave_number": plan.wave_number,
+                        "task_count": len(plan.tasks),
+                    },
+                )
+                resuming_wave_id = None
+            else:
+                self._persist_plan(plan, wave_budget)
+                total_tasks += len(plan.tasks)
             self._stage(run_id, RunStage.DISPATCH_TASKS)
             await self.scheduler.run_until_idle(run_id=run_id)
             self._stage(run_id, RunStage.VERIFY_EVIDENCE)
@@ -148,6 +181,9 @@ class NativeAnalysisCoordinator:
             correlate_and_persist(self.analysis, run_id)
             self._stage(run_id, RunStage.ASSESS_COVERAGE)
             task_records = self.analysis.task_records(run_id, plan.wave_id)
+            failed_task_count += sum(
+                record["status"] != "succeeded" for record in task_records
+            )
             verdict_count, accepted_count = self.analysis.wave_verdict_counts(
                 plan.wave_id
             )
@@ -238,6 +274,7 @@ class NativeAnalysisCoordinator:
             findings=findings,
             coverage=tuple(coverage),
             wave_count=self.analysis.wave_count(run_id),
+            failed_task_count=failed_task_count,
         )
 
     def _persist_plan(self, plan: WavePlan, budget: RunBudget) -> None:

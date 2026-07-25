@@ -18,9 +18,9 @@ def test_legacy_analysis_service_import_is_compatible() -> None:
 
 class FakeExecutor:
     async def execute(
-        self, request: AnalysisRequest, event_sink: EventSink
+        self, run_id: str, request: AnalysisRequest, event_sink: EventSink
     ) -> dict[str, Any]:
-        event_sink("scan_completed", {"project": request.project_path})
+        event_sink("scan_completed", {"project": request.project_path, "run_id": run_id})
         await asyncio.sleep(0)
         return {"synthesized_report": "Verified report", "files_scanned": 3}
 
@@ -30,8 +30,9 @@ class BlockingExecutor:
         self.started = asyncio.Event()
 
     async def execute(
-        self, request: AnalysisRequest, event_sink: EventSink
+        self, run_id: str, request: AnalysisRequest, event_sink: EventSink
     ) -> dict[str, Any]:
+        del run_id, request, event_sink
         self.started.set()
         await asyncio.Event().wait()
         raise AssertionError("unreachable")
@@ -39,6 +40,7 @@ class BlockingExecutor:
 
 @pytest.mark.asyncio
 async def test_submit_executes_and_records_events(tmp_path: Path) -> None:
+    resolved_tmp_path = str(tmp_path)
     service = AnalysisService(
         FakeExecutor(),
         database_path=tmp_path / "codeinsight.db",
@@ -58,7 +60,7 @@ async def test_submit_executes_and_records_events(tmp_path: Path) -> None:
         await asyncio.sleep(0.01)
 
     assert run.status == AnalysisStatus.SUCCEEDED
-    assert run.request.project_path == str(tmp_path.resolve())
+    assert run.request.project_path == resolved_tmp_path
     assert run.result == {
         "synthesized_report": "Verified report",
         "files_scanned": 3,
@@ -165,3 +167,24 @@ def test_request_rejects_extension_wildcards() -> None:
 def test_request_rejects_directories_outside_project(directory: str) -> None:
     with pytest.raises(ValueError, match="project root"):
         AnalysisRequest(project_path=".", selected_directories=[directory])
+
+
+def test_request_maps_native_budget_and_mode() -> None:
+    request = AnalysisRequest(
+        project_path=".",
+        mode="security",
+        max_agents=3,
+        max_waves=4,
+        max_tasks=20,
+        max_total_tokens=12_000,
+        max_cost_usd=2.5,
+        max_elapsed_seconds=90,
+    )
+    budget = request.run_budget()
+    assert request.mode.value == "security"
+    assert budget.max_specialists == 3
+    assert budget.max_waves == 4
+    assert budget.max_tasks == 20
+    assert budget.max_tokens == 12_000
+    assert budget.max_cost_usd == 2.5
+    assert budget.max_elapsed_seconds == 90

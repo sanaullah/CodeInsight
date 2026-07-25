@@ -7,7 +7,7 @@ const state = {
 };
 
 const byId = (id) => document.getElementById(id);
-const terminalStatuses = new Set(["succeeded", "failed", "cancelled"]);
+const terminalStatuses = new Set(["succeeded", "failed", "cancelled", "needs_attention"]);
 
 function setApiState(mode, label) {
   const element = byId("api-state");
@@ -64,6 +64,89 @@ function renderTimeline(events) {
   }
 }
 
+function appendDetail(container, title, detail, tone = "") {
+  const item = document.createElement("div");
+  item.className = `detail-item ${tone}`.trim();
+  const heading = document.createElement("strong");
+  heading.textContent = title;
+  const copy = document.createElement("small");
+  copy.textContent = detail;
+  item.append(heading, copy);
+  container.append(item);
+}
+
+function renderIntelligence(intelligence) {
+  byId("intelligence").classList.remove("hidden");
+  byId("current-stage").textContent = formatEventName(
+    intelligence.current_stage || intelligence.status || "queued",
+  );
+  byId("wave-count").textContent = String(intelligence.waves.length);
+  const counts = (intelligence.tasks || []).reduce((result, task) => {
+    result[task.status] = (result[task.status] || 0) + 1;
+    return result;
+  }, {});
+  byId("task-summary").textContent = Object.entries(counts)
+    .map(([status, count]) => `${count} ${status}`)
+    .join(" · ") || "0";
+  const usage = intelligence.usage || {};
+  const cost = Number(usage.cost_usd || 0);
+  byId("model-usage").textContent =
+    `${Number(usage.total_tokens || 0).toLocaleString()} tokens` +
+    (cost ? ` · $${cost.toFixed(4)}` : "");
+
+  const roles = byId("role-list");
+  roles.replaceChildren();
+  for (const role of intelligence.roles || []) {
+    const task = (intelligence.tasks || []).find((item) => item.role_id === role.role_id);
+    appendDetail(
+      roles,
+      role.name,
+      `${formatEventName(task?.status || "planned")} · ${role.mission}`,
+      task?.status || "",
+    );
+  }
+  if (!roles.children.length) appendDetail(roles, "Planning", "Roles have not been persisted yet.");
+
+  const coverage = byId("coverage-list");
+  coverage.replaceChildren();
+  const latest = (intelligence.coverage || []).at(-1);
+  if (latest) {
+    const measured = Object.entries(latest.measured || {})
+      .map(([name, value]) => `${formatEventName(name)} ${Math.round(Number(value) * 100)}%`)
+      .join(" · ");
+    appendDetail(coverage, `Decision: ${latest.follow_up_decision}`, measured || latest.decision_rationale);
+    for (const gap of latest.remaining_gaps || []) appendDetail(coverage, "Gap", gap, "gap");
+    for (const area of latest.unsupported_areas || []) {
+      appendDetail(coverage, "Unsupported", area, "gap");
+    }
+  } else {
+    appendDetail(coverage, "Pending", "Coverage is assessed after verified specialist results.");
+  }
+
+  const findings = byId("finding-list");
+  findings.replaceChildren();
+  for (const finding of intelligence.findings || []) {
+    appendDetail(
+      findings,
+      `[${finding.severity.toUpperCase()}] ${finding.title}`,
+      `${finding.claim} · ${finding.supporting_evidence_ids.length} verified evidence span(s)`,
+      "accepted",
+    );
+  }
+  for (const item of intelligence.candidates || []) {
+    if (item.verdict?.disposition === "accepted") continue;
+    appendDetail(
+      findings,
+      `${formatEventName(item.verdict?.disposition || "unverified")}: ${item.candidate.title}`,
+      item.verdict?.rationale || "No verifier verdict is available.",
+      "rejected",
+    );
+  }
+  if (!findings.children.length) {
+    appendDetail(findings, "No accepted findings yet", "Only evidence-verified findings appear here.");
+  }
+}
+
 function updateStatus(status) {
   const badge = byId("status-badge");
   badge.className = `status-badge ${status}`;
@@ -81,6 +164,8 @@ function renderRun(run) {
   byId("run-title").textContent =
     run.status === "succeeded"
       ? "Review complete"
+      : run.status === "needs_attention"
+        ? "Review completed with gaps"
       : run.status === "failed"
         ? "Review needs attention"
         : "Review in progress";
@@ -109,8 +194,12 @@ function updateElapsed() {
 async function pollRun() {
   if (!state.runId) return;
   try {
-    const run = await api(`/api/v1/analyses/${state.runId}`);
+    const [run, intelligence] = await Promise.all([
+      api(`/api/v1/analyses/${state.runId}`),
+      api(`/api/v1/analyses/${state.runId}/intelligence`),
+    ]);
     renderRun(run);
+    renderIntelligence(intelligence);
     if (terminalStatuses.has(run.status)) {
       clearInterval(state.pollHandle);
       state.pollHandle = null;
@@ -155,6 +244,7 @@ async function startReview(event) {
     byId("run-title").textContent = "Preparing review";
     updateStatus(accepted.status);
     renderTimeline([]);
+    byId("intelligence").classList.add("hidden");
     await pollRun();
     if (!terminalStatuses.has(state.status) && !state.pollHandle) {
       state.pollHandle = setInterval(pollRun, 1400);

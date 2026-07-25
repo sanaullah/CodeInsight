@@ -10,12 +10,15 @@ from pathlib import Path
 from typing import Any
 
 from domain.contracts import (
+    AnalysisTask,
     CanonicalFinding,
     CoverageAssessment,
     EvidenceRef,
     FindingCandidate,
     FindingVerdict,
     RoleSpec,
+    TaskStatus,
+    WavePlan,
 )
 
 from .database import database_connection
@@ -138,6 +141,91 @@ class SqliteAnalysisRepository:
                 (role_id,),
             ).fetchone()
             return RoleSpec.model_validate_json(row["contract_json"]) if row else None
+
+    def incomplete_wave_plan(self, run_id: str) -> WavePlan | None:
+        """Rehydrate the newest unassessed wave for crash-safe resumption."""
+
+        with database_connection(self.database_path) as connection:
+            wave = connection.execute(
+                """
+                SELECT waves.*
+                FROM waves
+                LEFT JOIN coverage_assessments AS coverage
+                  ON coverage.wave_id = waves.wave_id
+                WHERE waves.run_id = ? AND coverage.assessment_id IS NULL
+                ORDER BY waves.wave_number DESC LIMIT 1
+                """,
+                (run_id,),
+            ).fetchone()
+            if wave is None:
+                return None
+            role_rows = connection.execute(
+                """
+                SELECT contract_json FROM role_specs
+                WHERE wave_id = ? ORDER BY role_id
+                """,
+                (wave["wave_id"],),
+            ).fetchall()
+            task_rows = connection.execute(
+                """
+                SELECT * FROM tasks WHERE wave_id = ?
+                ORDER BY priority, task_id
+                """,
+                (wave["wave_id"],),
+            ).fetchall()
+        roles = tuple(
+            RoleSpec.model_validate_json(row["contract_json"]) for row in role_rows
+        )
+        tasks = []
+        for row in task_rows:
+            inputs = json.loads(row["input_json"])
+            budget = json.loads(row["budget_json"])
+            routing = json.loads(row["routing_policy_json"])
+            tasks.append(
+                AnalysisTask(
+                    task_id=str(row["task_id"]),
+                    run_id=str(row["run_id"]),
+                    wave_id=str(row["wave_id"]),
+                    role_id=str(row["role_id"]),
+                    task_type=str(row["task_type"]),
+                    priority=int(row["priority"]),
+                    immutable_input_ids=tuple(inputs["immutable_input_ids"]),
+                    configuration_hash=str(inputs["configuration_hash"]),
+                    idempotency_key=str(row["idempotency_key"]),
+                    model_policy=str(routing["model_policy"]),
+                    token_budget=int(budget["token_budget"]),
+                    cost_budget_usd=float(budget["cost_budget_usd"]),
+                    time_budget_seconds=int(budget["time_budget_seconds"]),
+                    tool_call_budget=int(budget["tool_call_budget"]),
+                    max_attempts=int(row["max_attempts"]),
+                    attempt_count=int(row["attempt_count"]),
+                    status=TaskStatus(str(row["status"])),
+                    lease_owner=row["lease_owner"],
+                    lease_expires_at=(
+                        datetime.fromisoformat(row["lease_expires_at"])
+                        if row["lease_expires_at"]
+                        else None
+                    ),
+                    cancellation_requested=bool(row["cancellation_requested"]),
+                )
+            )
+        return WavePlan(
+            wave_id=str(wave["wave_id"]),
+            run_id=run_id,
+            wave_number=int(wave["wave_number"]),
+            rationale=str(wave["rationale"]),
+            roles=roles,
+            tasks=tuple(tasks),
+            coverage_targets=tuple(
+                sorted(
+                    {
+                        target
+                        for role in roles
+                        for target in role.coverage_targets
+                    }
+                )
+            ),
+        )
 
     def persist_specialist_result(
         self,
@@ -551,3 +639,154 @@ class SqliteAnalysisRepository:
                 CoverageAssessment.model_validate_json(row["contract_json"])
                 for row in rows
             ]
+
+    def run_intelligence(self, run_id: str) -> dict[str, Any] | None:
+        """Return one truthful UI projection without N+1 repository reads."""
+
+        with database_connection(self.database_path) as connection:
+            run = connection.execute(
+                """
+                SELECT run_id, snapshot_id, current_stage, status
+                FROM runs WHERE run_id = ?
+                """,
+                (run_id,),
+            ).fetchone()
+            if run is None:
+                return None
+            waves = connection.execute(
+                """
+                SELECT wave_id, wave_number, rationale, status, created_at,
+                       completed_at
+                FROM waves WHERE run_id = ? ORDER BY wave_number
+                """,
+                (run_id,),
+            ).fetchall()
+            roles = connection.execute(
+                """
+                SELECT wave_id, contract_json FROM role_specs
+                WHERE run_id = ? ORDER BY wave_id, role_id
+                """,
+                (run_id,),
+            ).fetchall()
+            tasks = connection.execute(
+                """
+                SELECT task_id, wave_id, role_id, task_type, status,
+                       attempt_count, max_attempts, usage_json, error_json
+                FROM tasks
+                LEFT JOIN (
+                    SELECT task_id, json_group_object(attempt_number, usage_json)
+                           AS usage_json
+                    FROM task_attempts GROUP BY task_id
+                ) AS usage USING(task_id)
+                WHERE run_id = ? ORDER BY wave_id, priority, task_id
+                """,
+                (run_id,),
+            ).fetchall()
+            candidates = connection.execute(
+                """
+                SELECT candidates.contract_json AS candidate_json,
+                       verdicts.contract_json AS verdict_json
+                FROM finding_candidates AS candidates
+                LEFT JOIN finding_verdicts AS verdicts
+                  ON verdicts.candidate_id = candidates.candidate_id
+                WHERE candidates.run_id = ?
+                ORDER BY candidates.fingerprint, candidates.candidate_id
+                """,
+                (run_id,),
+            ).fetchall()
+            findings = connection.execute(
+                """
+                SELECT contract_json FROM canonical_findings
+                WHERE run_id = ? ORDER BY fingerprint
+                """,
+                (run_id,),
+            ).fetchall()
+            coverage = connection.execute(
+                """
+                SELECT contract_json FROM coverage_assessments
+                WHERE run_id = ? ORDER BY created_at
+                """,
+                (run_id,),
+            ).fetchall()
+            calls = connection.execute(
+                """
+                SELECT model_call_id, wave_id, task_id, provider, model, status,
+                       usage_json, started_at, completed_at
+                FROM model_calls WHERE run_id = ? ORDER BY started_at
+                """,
+                (run_id,),
+            ).fetchall()
+        role_records = [
+            {"wave_id": str(row["wave_id"]), **json.loads(row["contract_json"])}
+            for row in roles
+        ]
+        task_records = []
+        for row in tasks:
+            attempt_usage = (
+                {
+                    key: json.loads(value)
+                    for key, value in json.loads(row["usage_json"]).items()
+                }
+                if row["usage_json"]
+                else {}
+            )
+            task_records.append(
+                {
+                    "task_id": str(row["task_id"]),
+                    "wave_id": str(row["wave_id"]),
+                    "role_id": row["role_id"],
+                    "task_type": str(row["task_type"]),
+                    "status": str(row["status"]),
+                    "attempt_count": int(row["attempt_count"]),
+                    "max_attempts": int(row["max_attempts"]),
+                    "attempt_usage": attempt_usage,
+                    "error": json.loads(row["error_json"])
+                    if row["error_json"]
+                    else None,
+                }
+            )
+        model_calls = [
+            {
+                **{
+                    key: row[key]
+                    for key in row.keys()
+                    if key != "usage_json"
+                },
+                "usage": json.loads(row["usage_json"]),
+            }
+            for row in calls
+        ]
+        usage = {
+            "input_tokens": sum(
+                int(item["usage"].get("input_tokens", 0)) for item in model_calls
+            ),
+            "output_tokens": sum(
+                int(item["usage"].get("output_tokens", 0)) for item in model_calls
+            ),
+            "cost_usd": sum(
+                float(item["usage"].get("cost_usd", 0)) for item in model_calls
+            ),
+        }
+        usage["total_tokens"] = usage["input_tokens"] + usage["output_tokens"]
+        return {
+            "run_id": str(run["run_id"]),
+            "status": str(run["status"]),
+            "current_stage": run["current_stage"],
+            "snapshot_id": run["snapshot_id"],
+            "waves": [dict(row) for row in waves],
+            "roles": role_records,
+            "tasks": task_records,
+            "candidates": [
+                {
+                    "candidate": json.loads(row["candidate_json"]),
+                    "verdict": json.loads(row["verdict_json"])
+                    if row["verdict_json"]
+                    else None,
+                }
+                for row in candidates
+            ],
+            "findings": [json.loads(row["contract_json"]) for row in findings],
+            "coverage": [json.loads(row["contract_json"]) for row in coverage],
+            "model_calls": model_calls,
+            "usage": usage,
+        }

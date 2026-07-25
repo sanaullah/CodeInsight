@@ -2,16 +2,18 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import PurePosixPath, PureWindowsPath
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from domain.contracts import AnalysisMode, RunBudget
+
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class AnalysisStatus(StrEnum):
@@ -20,10 +22,11 @@ class AnalysisStatus(StrEnum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
+    NEEDS_ATTENTION = "needs_attention"
 
 
 class AnalysisRequest(BaseModel):
-    """A bounded request for the existing swarm-analysis engine."""
+    """A bounded request for the native durable analysis engine."""
 
     model_config = ConfigDict(str_strip_whitespace=True)
 
@@ -39,6 +42,22 @@ class AnalysisRequest(BaseModel):
     selected_directories: list[str] | None = Field(default=None, max_length=100)
     enable_dynamic_file_selection: bool = True
     enable_tool_calling: bool = False
+    mode: AnalysisMode = AnalysisMode.DEEP
+    max_waves: int = Field(default=2, ge=1, le=10)
+    max_tasks: int = Field(default=100, ge=1, le=500)
+    max_total_tokens: int = Field(default=1_000_000, ge=1)
+    max_cost_usd: float = Field(default=25, ge=0)
+    max_elapsed_seconds: int = Field(default=3_600, ge=1)
+
+    def run_budget(self) -> RunBudget:
+        return RunBudget(
+            max_specialists=self.max_agents,
+            max_tasks=self.max_tasks,
+            max_waves=self.max_waves,
+            max_tokens=self.max_total_tokens,
+            max_cost_usd=self.max_cost_usd,
+            max_elapsed_seconds=self.max_elapsed_seconds,
+        )
 
     @field_validator("file_extensions")
     @classmethod
@@ -99,6 +118,9 @@ class AnalysisRun(BaseModel):
     events: list[AnalysisEvent] = Field(default_factory=list)
     result: dict[str, Any] | None = None
     error: str | None = None
+    current_stage: str | None = None
+    snapshot_id: str | None = None
+    mode: AnalysisMode = AnalysisMode.DEEP
 
 
 class AnalysisAccepted(BaseModel):
@@ -125,3 +147,32 @@ class CapabilitiesResponse(BaseModel):
     languages: list[LanguageCapability]
     default_max_agents: int = 4
     max_agents: int = 12
+    analysis_modes: list[AnalysisMode] = Field(
+        default_factory=lambda: list(AnalysisMode)
+    )
+    native_durable_workflow: bool = True
+    model_provider_configured: bool = False
+    langfuse_enabled: bool = False
+
+
+class RecoveryResponse(BaseModel):
+    recovered_runs: int
+    recovered_tasks: int
+    scheduled_runs: int
+
+
+class AnalysisIntelligence(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    run_id: str
+    status: str
+    current_stage: str | None = None
+    snapshot_id: str | None = None
+    waves: list[dict[str, Any]] = Field(default_factory=list)
+    roles: list[dict[str, Any]] = Field(default_factory=list)
+    tasks: list[dict[str, Any]] = Field(default_factory=list)
+    candidates: list[dict[str, Any]] = Field(default_factory=list)
+    findings: list[dict[str, Any]] = Field(default_factory=list)
+    coverage: list[dict[str, Any]] = Field(default_factory=list)
+    model_calls: list[dict[str, Any]] = Field(default_factory=list)
+    usage: dict[str, int | float] = Field(default_factory=dict)
