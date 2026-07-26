@@ -11,7 +11,7 @@ import hashlib
 import json
 from collections import Counter
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import Field, ValidationError
 
@@ -37,29 +37,111 @@ PROMPT_PATH = (
 )
 
 
-class ArchitectureComponent(ContractModel):
-    name: str = Field(min_length=1, max_length=200)
-    responsibility: str = Field(min_length=1, max_length=2_000)
+class EvidencePattern(ContractModel):
+    pattern: str = Field(min_length=1, max_length=200)
+    confidence: float = Field(ge=0, le=1)
     evidence_paths: tuple[str, ...] = Field(max_length=20)
+
+
+class ArchitectureModule(ContractModel):
+    name: str = Field(min_length=1, max_length=200)
+    purpose: str = Field(min_length=1, max_length=2_000)
+    complexity: Literal["simple", "medium", "complex", "very_complex", "unknown"]
+    files: tuple[str, ...] = Field(max_length=80)
+    entry_points: tuple[str, ...] = Field(max_length=40)
+    exposed_apis: tuple[str, ...] = Field(max_length=40)
     confidence: float = Field(ge=0, le=1)
 
 
+class ArchitectureDependency(ContractModel):
+    source: str = Field(min_length=1, max_length=400)
+    target: str = Field(min_length=1, max_length=400)
+    type: Literal["import", "call", "data", "event"]
+    confidence: float = Field(ge=0, le=1)
+    evidence_paths: tuple[str, ...] = Field(max_length=20)
+
+
+class ArchitectureDataFlow(ContractModel):
+    source: str = Field(min_length=1, max_length=400)
+    target: str = Field(min_length=1, max_length=400)
+    data_type: str = Field(min_length=1, max_length=400)
+    protocol: str = Field(min_length=1, max_length=200)
+    direction: Literal["unidirectional", "bidirectional"]
+    confidence: float = Field(ge=0, le=1)
+    evidence_paths: tuple[str, ...] = Field(max_length=20)
+
+
+class ApiParameter(ContractModel):
+    name: str = Field(min_length=1, max_length=200)
+    type: str = Field(min_length=1, max_length=200)
+
+
+class ArchitectureEndpoint(ContractModel):
+    path: str = Field(min_length=1, max_length=1_000)
+    method: Literal["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS", "UNKNOWN"]
+    description: str = Field(min_length=1, max_length=2_000)
+    parameters: tuple[ApiParameter, ...] = Field(max_length=40)
+    response_type: str = Field(min_length=1, max_length=400)
+    authentication_required: bool | Literal["unknown"]
+    rate_limited: bool | Literal["unknown"]
+    evidence_paths: tuple[str, ...] = Field(max_length=20)
+
+
+class Technology(ContractModel):
+    name: str = Field(min_length=1, max_length=200)
+    category: str = Field(min_length=1, max_length=200)
+    confidence: float = Field(ge=0, le=1)
+
+
+class DatabaseResource(ContractModel):
+    table_or_resource: str = Field(min_length=1, max_length=400)
+    relationships: tuple[str, ...] = Field(max_length=40)
+    evidence_paths: tuple[str, ...] = Field(max_length=20)
+
+
+class DesignPattern(ContractModel):
+    name: str = Field(min_length=1, max_length=200)
+    location: str = Field(min_length=1, max_length=1_000)
+    confidence: float = Field(ge=0, le=1)
+
+
+class SecurityMechanism(ContractModel):
+    mechanism: str = Field(min_length=1, max_length=400)
+    confidence: float = Field(ge=0, le=1)
+    evidence_paths: tuple[str, ...] = Field(max_length=20)
+
+
+class SecurityArchitecture(ContractModel):
+    authentication: tuple[SecurityMechanism, ...] = Field(max_length=40)
+    authorization: tuple[SecurityMechanism, ...] = Field(max_length=40)
+    concerns: tuple[str, ...] = Field(max_length=80)
+
+
+class PerformanceCharacteristics(ContractModel):
+    bottlenecks: tuple[str, ...] = Field(max_length=80)
+    optimizations: tuple[str, ...] = Field(max_length=80)
+
+
+class AntiPattern(ContractModel):
+    name: str = Field(min_length=1, max_length=200)
+    location: str = Field(min_length=1, max_length=1_000)
+    severity: Literal["low", "medium", "high"]
+
+
 class ArchitectureDiscoveryOutput(ContractModel):
-    system_type: str = Field(min_length=1, max_length=500)
-    architecture_patterns: tuple[str, ...] = Field(max_length=20)
-    components: tuple[ArchitectureComponent, ...] = Field(max_length=40)
-    dependencies: tuple[str, ...] = Field(max_length=80)
-    data_flows: tuple[str, ...] = Field(max_length=80)
-    api_endpoints: tuple[str, ...] = Field(max_length=80)
-    design_patterns: tuple[str, ...] = Field(max_length=40)
-    technology_stack: dict[str, tuple[str, ...]]
-    frameworks: tuple[str, ...] = Field(max_length=40)
-    libraries: tuple[str, ...] = Field(max_length=80)
-    database_schema: tuple[str, ...] = Field(max_length=80)
-    security_architecture: tuple[str, ...] = Field(max_length=40)
-    security_considerations: tuple[str, ...] = Field(max_length=40)
-    performance_considerations: tuple[str, ...] = Field(max_length=40)
-    anti_patterns: tuple[str, ...] = Field(max_length=40)
+    system_name: str | None = Field(default=None, max_length=500)
+    system_type: Literal["web_app", "library", "api_service", "cli_tool", "data_science", "unknown"]
+    architecture_patterns: tuple[EvidencePattern, ...] = Field(max_length=40)
+    modules: tuple[ArchitectureModule, ...] = Field(max_length=80)
+    dependencies: tuple[ArchitectureDependency, ...] = Field(max_length=160)
+    data_flows: tuple[ArchitectureDataFlow, ...] = Field(max_length=160)
+    api_endpoints: tuple[ArchitectureEndpoint, ...] = Field(max_length=160)
+    tech_stack: dict[Literal["frameworks", "libraries"], tuple[Technology, ...]]
+    database_schema: tuple[DatabaseResource, ...] = Field(max_length=160)
+    design_patterns: tuple[DesignPattern, ...] = Field(max_length=80)
+    security_architecture: SecurityArchitecture
+    performance_characteristics: PerformanceCharacteristics
+    anti_patterns: tuple[AntiPattern, ...] = Field(max_length=80)
     architectural_smells: tuple[str, ...] = Field(max_length=40)
     unknowns: tuple[str, ...] = Field(max_length=40)
 
@@ -169,20 +251,18 @@ def build_architecture_input(files: list[dict[str, Any]]) -> dict[str, Any]:
 def deterministic_fallback(summary: dict[str, Any], reason: str) -> tuple[dict[str, Any], str]:
     return (
         {
-            "system_type": "repository requiring architecture discovery",
+            "system_name": None,
+            "system_type": "unknown",
             "architecture_patterns": (),
-            "components": (),
+            "modules": (),
             "dependencies": (),
             "data_flows": (),
             "api_endpoints": (),
             "design_patterns": (),
-            "technology_stack": {"languages": tuple(sorted(summary["languages"]))},
-            "frameworks": (),
-            "libraries": (),
+            "tech_stack": {"frameworks": (), "libraries": ()},
             "database_schema": (),
-            "security_architecture": (),
-            "security_considerations": (),
-            "performance_considerations": (),
+            "security_architecture": {"authentication": (), "authorization": (), "concerns": ()},
+            "performance_characteristics": {"bottlenecks": (), "optimizations": ()},
             "anti_patterns": (),
             "architectural_smells": (),
             "unknowns": (reason, "deterministic fallback contains no inferred architecture"),

@@ -20,31 +20,50 @@ from infrastructure.db.run_ledger import SqliteRunLedger
 class ValidGateway:
     async def complete(self, request: ModelRequest) -> ModelResponse:
         assert "expert software architect" in request.system_prompt
-        assert "V6 source-derived task" in request.system_prompt
-        assert "V2 enhancement" in request.system_prompt
+        assert "Strict grounding" in request.system_prompt
+        assert "Extraction targets" in request.system_prompt
         return ModelResponse(
             content={
+                "system_name": "fixture",
                 "system_type": "api_service",
-                "architecture_patterns": ["layered"],
-                "components": [
+                "architecture_patterns": [
                     {
-                        "name": "api",
-                        "responsibility": "serve requests",
+                        "pattern": "layered",
                         "evidence_paths": ["api.py"],
                         "confidence": 0.9,
                     }
                 ],
-                "dependencies": [],
+                "modules": [
+                    {
+                        "name": "api",
+                        "purpose": "serve requests",
+                        "complexity": "simple",
+                        "files": ["api.py"],
+                        "entry_points": ["api.py"],
+                        "exposed_apis": [],
+                        "confidence": 0.9,
+                    }
+                ],
+                "dependencies": [
+                    {
+                        "source": "api.py",
+                        "target": "service.py",
+                        "type": "import",
+                        "confidence": 0.8,
+                        "evidence_paths": ["api.py"],
+                    }
+                ],
                 "data_flows": [],
                 "api_endpoints": [],
                 "design_patterns": [],
-                "technology_stack": {"languages": ["python"]},
-                "frameworks": [],
-                "libraries": [],
+                "tech_stack": {"frameworks": [], "libraries": []},
                 "database_schema": [],
-                "security_architecture": [],
-                "security_considerations": [],
-                "performance_considerations": [],
+                "security_architecture": {
+                    "authentication": [],
+                    "authorization": [],
+                    "concerns": [],
+                },
+                "performance_characteristics": {"bottlenecks": [], "optimizations": []},
                 "anti_patterns": [],
                 "architectural_smells": [],
                 "unknowns": [],
@@ -113,10 +132,10 @@ def test_architecture_discovery_prompt_preserves_v6_contract_and_v2_bounds() -> 
     assert PROMPT_PATH.name == "architecture-discovery.md"
     assert PROMPT_PATH.is_file()
     prompt = architecture_system_prompt()
-    assert "System Structure" in prompt
-    assert "Modules and Components" in prompt
-    assert "Security Architecture" in prompt
-    assert "V2 enhancement" in prompt
+    assert "System structure" in prompt
+    assert "Modules" in prompt
+    assert "Quality" in prompt
+    assert "Strict grounding" in prompt
     assert "unknowns" in prompt
 
 
@@ -135,7 +154,8 @@ def test_valid_model_discovery_is_validated_and_durable(tmp_path: Path) -> None:
         ).discover(run_id="run-1", snapshot=snapshot, files=_files(), budget=RunBudget())
     )
     assert result.status == "model-validated"
-    assert result.result["components"][0]["evidence_paths"] == ["api.py"]
+    assert result.result["modules"][0]["files"] == ["api.py"]
+    assert result.result["dependencies"][0]["type"] == "import"
     stored = repository.discoveries_for_run("run-1")[0]
     assert "SECRET" not in str(stored)
     assert stored["prompt_path"] == "prompts/core/phases/planning/architecture-discovery.md"
@@ -150,5 +170,5 @@ def test_invalid_or_unavailable_model_falls_back_without_inference(tmp_path: Pat
         ).discover(run_id="run-1", snapshot=snapshot, files=_files(), budget=RunBudget())
     )
     assert result.status == "fallback"
-    assert result.result["components"] == ()
+    assert result.result["modules"] == ()
     assert "invalid" in result.result["unknowns"][0]
