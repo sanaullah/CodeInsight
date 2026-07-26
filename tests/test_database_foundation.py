@@ -98,6 +98,25 @@ def test_database_rejects_schema_newer_than_application(tmp_path: Path) -> None:
         raise AssertionError("newer schemas must not be opened")
 
 
+def test_database_accepts_only_the_known_prepublication_v9_checksum(tmp_path: Path) -> None:
+    database_path = tmp_path / "codeinsight.db"
+    initialize_database(database_path)
+    legacy_checksum = "b5a23aaac89bbc4cc9215a7a9c8800915b4a0f0d82d2b677488cdcc8b3cbb335"
+    with database_connection(database_path) as connection:
+        connection.execute(
+            "UPDATE schema_migrations SET checksum = ? WHERE version = 9",
+            (legacy_checksum,),
+        )
+
+    assert initialize_database(database_path) == SCHEMA_VERSION
+    with database_connection(database_path) as connection:
+        connection.execute(
+            "UPDATE schema_migrations SET checksum = 'tampered' WHERE version = 9"
+        )
+    with pytest.raises(RuntimeError, match="canonical schema source"):
+        initialize_database(database_path)
+
+
 def test_annotation_identity_upgrade_preserves_v7_notes_and_history(
     tmp_path: Path,
 ) -> None:

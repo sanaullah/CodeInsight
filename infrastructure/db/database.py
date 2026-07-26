@@ -834,6 +834,14 @@ MIGRATIONS: dict[int, tuple[str, tuple[str, ...]]] = {
     10: ("architecture prompt template provenance", _MIGRATION_10),
 }
 
+# Migration definitions are immutable once a ledger has applied them. A short-lived
+# pre-publish v9 build created local ledgers with this checksum; it has the same
+# v9 schema and is accepted solely so those ledgers can receive v10 provenance.
+# Do not add broad checksum bypasses here: all other mismatches remain tampering.
+_ACCEPTED_LEGACY_MIGRATION_CHECKSUMS: dict[int, frozenset[str]] = {
+    9: frozenset({"b5a23aaac89bbc4cc9215a7a9c8800915b4a0f0d82d2b677488cdcc8b3cbb335"}),
+}
+
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
@@ -929,9 +937,13 @@ def initialize_database(
                 expected_checksum = hashlib.sha256(
                     "\n".join(statements).encode("utf-8")
                 ).hexdigest()
+                accepted_checksums = _ACCEPTED_LEGACY_MIGRATION_CHECKSUMS.get(version, frozenset())
                 if (
                     applied["description"] != expected_description
-                    or applied["checksum"] != expected_checksum
+                    or (
+                        applied["checksum"] != expected_checksum
+                        and applied["checksum"] not in accepted_checksums
+                    )
                 ):
                     raise RuntimeError(
                         f"database migration {version} does not match the canonical schema source"
