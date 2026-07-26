@@ -9,6 +9,7 @@ dependencies = [
     "fastapi>=0.139.2,<1",
     "instructor>=1.15.1,<2",
     "pydantic>=2.13.4,<3",
+    "pydantic-ai-slim[openai]>=1.65,<2",
     "python-dotenv>=1.2.2,<2",
     "uvicorn[standard]>=0.51,<1",
 ]

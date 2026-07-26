@@ -23,6 +23,7 @@ from infrastructure.llm.instructor_gateway import (
     InstructorOpenAICompatibleGateway,
     provider_capability_profile,
 )
+from infrastructure.llm.pydantic_ai_gateway import PydanticAIOpenAICompatibleGateway
 
 
 def _request(**changes: Any) -> ModelRequest:
@@ -63,6 +64,7 @@ def _provider(
                 else {"role": "assistant", "content": selected}
             )
             body = {
+                "object": "chat.completion",
                 "id": f"request-{len(requests)}",
                 "model": "served-model",
                 "choices": [
@@ -75,6 +77,7 @@ def _provider(
                 "usage": {
                     "prompt_tokens": 10,
                     "completion_tokens": 5,
+                    "total_tokens": 15,
                     "cost": 0.01,
                 },
             }
@@ -137,6 +140,26 @@ async def test_instructor_adapter_validates_exact_specialist_contract() -> None:
     assert len(requests) == 1
     assert requests[0]["model"] == "fixture-model"
     assert requests[0]["max_tokens"] == 200
+
+
+@pytest.mark.asyncio
+async def test_pydantic_ai_adapter_validates_the_same_specialist_contract() -> None:
+    with _provider([_valid_output()]) as (base_url, requests):
+        gateway = PydanticAIOpenAICompatibleGateway(
+            base_url=base_url,
+            api_key="fixture-secret",
+        )
+        try:
+            response = await gateway.complete(_request())
+        finally:
+            await gateway.aclose()
+
+    assert response.content == SpecialistOutput.model_validate_json(
+        _valid_output()
+    ).model_dump(mode="json")
+    assert response.provider == "pydantic-ai-openai-compatible"
+    assert len(requests) == 1
+    assert requests[0]["model"] == "fixture-model"
 
 
 @pytest.mark.asyncio
@@ -300,4 +323,15 @@ def test_provider_capability_profile_configuration_rejects_implicit_mode(
 ) -> None:
     monkeypatch.setenv("CODEINSIGHT_PROVIDER_CAPABILITY_PROFILE", "automatic")
     with pytest.raises(ValueError, match="must be one of"):
+        ApiSettings.from_environment()
+
+
+def test_pydantic_ai_is_the_default_agent_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CODEINSIGHT_AGENT_RUNTIME", raising=False)
+    assert ApiSettings.from_environment().agent_runtime == "pydantic-ai"
+
+    monkeypatch.setenv("CODEINSIGHT_AGENT_RUNTIME", "not-a-runtime")
+    with pytest.raises(ValueError, match="CODEINSIGHT_AGENT_RUNTIME"):
         ApiSettings.from_environment()

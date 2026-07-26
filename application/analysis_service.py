@@ -56,6 +56,7 @@ from infrastructure.llm.instructor_gateway import (
     InstructorOpenAICompatibleGateway,
     provider_capability_profile,
 )
+from infrastructure.llm.pydantic_ai_gateway import PydanticAIOpenAICompatibleGateway
 from infrastructure.observability.langfuse import LangfuseTraceExporter
 from workflow.task_scheduler import NativeTaskScheduler
 
@@ -282,7 +283,12 @@ class AnalysisService:
             provider: ModelGateway = self._configured_gateway
         elif not self.settings.model_base_url:
             provider = OfflineModelGateway()
-        elif profile.instructor_supported:
+        elif self.settings.agent_runtime == "pydantic-ai":
+            provider = PydanticAIOpenAICompatibleGateway(
+                base_url=self.settings.model_base_url,
+                api_key=self.settings.model_api_key,
+            )
+        elif self.settings.agent_runtime == "instructor" and profile.instructor_supported:
             provider = InstructorOpenAICompatibleGateway(
                 base_url=self.settings.model_base_url,
                 api_key=self.settings.model_api_key,

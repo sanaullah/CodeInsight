@@ -65,6 +65,15 @@ def _provider_capability_profile() -> str:
     return value
 
 
+def _agent_runtime() -> str:
+    value = os.getenv("CODEINSIGHT_AGENT_RUNTIME", "pydantic-ai").strip()
+    allowed = {"pydantic-ai", "instructor", "direct"}
+    if value not in allowed:
+        choices = ", ".join(sorted(allowed))
+        raise ValueError(f"CODEINSIGHT_AGENT_RUNTIME must be one of: {choices}")
+    return value
+
+
 def default_data_directory() -> Path:
     configured = os.getenv("CODEINSIGHT_DATA_DIR")
     if configured:
@@ -92,6 +101,7 @@ class ApiSettings:
     model_api_key: str = ""
     default_model: str = "local-model"
     provider_capability_profile: str = "direct"
+    agent_runtime: str = "pydantic-ai"
     max_concurrent_model_calls: int = 2
     langfuse_enabled: bool = False
     langfuse_public_key: str = ""
@@ -121,6 +131,7 @@ class ApiSettings:
                 "CODEINSIGHT_DEFAULT_MODEL", os.getenv("DEFAULT_MODEL", "local-model")
             ),
             provider_capability_profile=_provider_capability_profile(),
+            agent_runtime=_agent_runtime(),
             max_concurrent_model_calls=_positive_int(
                 "CODEINSIGHT_MAX_CONCURRENT_MODEL_CALLS", 2
             ),
