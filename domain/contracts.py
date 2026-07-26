@@ -94,6 +94,55 @@ class RoleSpec(ContractModel):
     depends_on_role_ids: tuple[str, ...] = ()
 
 
+class ArchitectureDiscovery(ContractModel):
+    """Immutable, bounded architecture-planning result for one snapshot."""
+
+    discovery_id: str
+    run_id: str
+    snapshot_id: str
+    input_hash: str
+    prompt_template: str
+    prompt_version: int = Field(ge=1)
+    prompt_text: str = Field(min_length=1, max_length=80_000)
+    result: dict[str, Any]
+    result_hash: str
+    status: Literal["deterministic", "model-validated", "fallback"]
+
+
+class RoleProposal(ContractModel):
+    """Untrusted AI role proposal awaiting host validation."""
+
+    proposal_id: str
+    run_id: str
+    wave_number: int = Field(ge=1)
+    proposal_hash: str
+    name: str = Field(min_length=1, max_length=200)
+    mission: str = Field(min_length=1, max_length=4_000)
+    rationale: str = Field(min_length=1, max_length=4_000)
+    coverage_targets: tuple[str, ...] = Field(min_length=1, max_length=20)
+    required_capabilities: tuple[str, ...] = Field(min_length=1, max_length=8)
+    validation_status: Literal["proposed", "approved", "rejected", "fallback"]
+    validation_reason: str | None = Field(default=None, max_length=4_000)
+    approved_role_id: str | None = None
+
+
+class GeneratedRolePrompt(ContractModel):
+    """Reusable role instruction; never contains repository source bodies."""
+
+    prompt_id: str
+    run_id: str
+    wave_number: int = Field(ge=1)
+    role_id: str | None = None
+    prompt_template: str
+    prompt_version: int = Field(ge=1)
+    instruction_text: str = Field(min_length=1, max_length=80_000)
+    architecture_hash: str
+    goal_hash: str
+    content_hash: str
+    validation_status: Literal["generated", "approved", "rejected", "fallback"]
+    validation: dict[str, Any] = Field(default_factory=dict)
+
+
 class AnalysisTask(ContractModel):
     task_id: str
     run_id: str

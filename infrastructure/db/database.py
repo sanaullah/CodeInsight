@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 DEFAULT_BUSY_TIMEOUT_MS = 5_000
 
 _MIGRATION_1 = (
@@ -745,6 +745,73 @@ _MIGRATION_8 = (
     "ON architecture_component_annotation_events(annotation_id, version)",
 )
 
+_MIGRATION_9 = (
+    """
+    CREATE TABLE architecture_discoveries (
+        discovery_id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+        snapshot_id TEXT NOT NULL REFERENCES repository_snapshots(snapshot_id),
+        input_hash TEXT NOT NULL,
+        prompt_template TEXT NOT NULL,
+        prompt_version INTEGER NOT NULL CHECK (prompt_version >= 1),
+        prompt_text TEXT NOT NULL,
+        result_json TEXT NOT NULL,
+        result_hash TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('deterministic', 'model-validated', 'fallback')),
+        created_at TEXT NOT NULL,
+        UNIQUE(run_id, input_hash)
+    )
+    """,
+    """
+    CREATE TABLE role_proposals (
+        proposal_id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+        wave_number INTEGER NOT NULL CHECK (wave_number >= 1),
+        proposal_hash TEXT NOT NULL,
+        proposal_json TEXT NOT NULL,
+        validation_status TEXT NOT NULL CHECK (
+            validation_status IN ('proposed', 'approved', 'rejected', 'fallback')
+        ),
+        validation_reason TEXT,
+        approved_role_id TEXT REFERENCES role_specs(role_id),
+        created_at TEXT NOT NULL,
+        UNIQUE(run_id, proposal_hash)
+    )
+    """,
+    """
+    CREATE TABLE generated_role_prompts (
+        prompt_id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
+        wave_number INTEGER NOT NULL CHECK (wave_number >= 1),
+        role_id TEXT REFERENCES role_specs(role_id),
+        prompt_template TEXT NOT NULL,
+        prompt_version INTEGER NOT NULL CHECK (prompt_version >= 1),
+        instruction_text TEXT NOT NULL,
+        architecture_hash TEXT NOT NULL,
+        goal_hash TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        validation_status TEXT NOT NULL CHECK (
+            validation_status IN ('generated', 'approved', 'rejected', 'fallback')
+        ),
+        validation_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        UNIQUE(run_id, content_hash)
+    )
+    """,
+    """
+    CREATE TRIGGER generated_role_prompts_immutable
+    BEFORE UPDATE ON generated_role_prompts
+    BEGIN
+        SELECT RAISE(ABORT, 'generated role prompts are immutable');
+    END
+    """,
+    "CREATE INDEX idx_architecture_discoveries_run_created "
+    "ON architecture_discoveries(run_id, created_at)",
+    "CREATE INDEX idx_role_proposals_run_wave ON role_proposals(run_id, wave_number)",
+    "CREATE INDEX idx_generated_role_prompts_run_wave "
+    "ON generated_role_prompts(run_id, wave_number)",
+)
+
 MIGRATIONS: dict[int, tuple[str, tuple[str, ...]]] = {
     1: ("initial durable application ledger", _MIGRATION_1),
     2: ("durable finding review lifecycle", _MIGRATION_2),
@@ -754,6 +821,7 @@ MIGRATIONS: dict[int, tuple[str, tuple[str, ...]]] = {
     6: ("immutable redacted specialist prompt artifacts", _MIGRATION_6),
     7: ("durable architecture component annotations", _MIGRATION_7),
     8: ("stable architecture annotation identity", _MIGRATION_8),
+    9: ("durable architecture planning and generated role prompts", _MIGRATION_9),
 }
 
 

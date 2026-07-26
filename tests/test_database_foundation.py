@@ -62,6 +62,18 @@ def test_database_initialization_is_idempotent_and_enables_wal(tmp_path: Path) -
             "retention_policy",
             "retention_days",
         }.issubset(prompt_columns)
+        assert {
+            "architecture_discoveries",
+            "role_proposals",
+            "generated_role_prompts",
+        }.issubset(
+            {
+                row["name"]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                ).fetchall()
+            }
+        )
 
     assert list(tmp_path.rglob("*.db")) == [database_path]
 
@@ -172,7 +184,7 @@ def test_annotation_identity_upgrade_preserves_v7_notes_and_history(
     connection.commit()
     connection.close()
 
-    assert initialize_database(database_path) == 8
+    assert initialize_database(database_path) == SCHEMA_VERSION
     with database_connection(database_path) as upgraded:
         annotation = upgraded.execute(
             """
