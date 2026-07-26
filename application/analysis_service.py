@@ -159,6 +159,8 @@ class NativeAnalysisExecutor:
                 repository=SqlitePlanningRepository(self.ledger),
                 gateway=None if self.offline else self.gateway,
                 model=request.model_name or self.default_model,
+                snapshots=snapshots,
+                artifacts=artifacts,
             ),
             role_proposals=AiRoleProposalService(
                 gateway=None if self.offline else self.gateway,

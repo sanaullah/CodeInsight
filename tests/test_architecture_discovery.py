@@ -10,6 +10,7 @@ from analysis.native.architecture_discovery import (
     ArchitectureDiscoveryService,
     architecture_system_prompt,
     build_architecture_input,
+    select_architecture_source_paths,
 )
 from application.model_gateway import ModelRequest, ModelResponse
 from domain.contracts import RepositorySnapshot, RunBudget
@@ -18,7 +19,11 @@ from infrastructure.db.run_ledger import SqliteRunLedger
 
 
 class ValidGateway:
+    def __init__(self) -> None:
+        self.request: ModelRequest | None = None
+
     async def complete(self, request: ModelRequest) -> ModelResponse:
+        self.request = request
         assert "expert software architect" in request.system_prompt
         assert "Strict grounding" in request.system_prompt
         assert "Extraction targets" in request.system_prompt
@@ -146,11 +151,57 @@ def test_architecture_input_is_bounded_metadata_only() -> None:
     assert "SECRET" not in str(summary)
 
 
+def test_architecture_source_selection_excludes_package_and_test_boilerplate() -> None:
+    selected = select_architecture_source_paths(
+        _files()
+        + [
+            {
+                "relative_path": "__init__.py",
+                "language": "python",
+                "classification": "source",
+                "line_count": 1,
+            },
+            {
+                "relative_path": "services/orders.py",
+                "language": "python",
+                "classification": "source",
+                "line_count": 200,
+            },
+            {
+                "relative_path": "app.py",
+                "language": "python",
+                "classification": "source",
+                "line_count": 50,
+            },
+        ]
+    )
+    assert "__init__.py" not in selected
+    assert "tests/test_api.py" not in selected
+    assert selected[0] == "app.py"
+
+
+def test_architecture_input_includes_only_explicit_source_bundle() -> None:
+    summary = build_architecture_input(
+        _files(),
+        source_files=(
+            {
+                "relative_path": "app.py",
+                "language": "python",
+                "content": "from fastapi import FastAPI",
+                "truncated": False,
+            },
+        ),
+    )
+    assert summary["source_files"][0]["relative_path"] == "app.py"
+    assert "FastAPI" in summary["source_files"][0]["content"]
+
+
 def test_valid_model_discovery_is_validated_and_durable(tmp_path: Path) -> None:
     repository, snapshot = _setup(tmp_path)
+    gateway = ValidGateway()
     result = asyncio.run(
         ArchitectureDiscoveryService(
-            repository=repository, gateway=ValidGateway(), model="fixture"
+            repository=repository, gateway=gateway, model="fixture"
         ).discover(run_id="run-1", snapshot=snapshot, files=_files(), budget=RunBudget())
     )
     assert result.status == "model-validated"
@@ -160,6 +211,8 @@ def test_valid_model_discovery_is_validated_and_durable(tmp_path: Path) -> None:
     assert "SECRET" not in str(stored)
     assert stored["prompt_path"] == "prompts/core/phases/planning/architecture-discovery.md"
     assert len(str(stored["prompt_content_hash"])) == 64
+    assert gateway.request is not None
+    assert '"source_files":[]' in gateway.request.user_prompt
 
 
 def test_invalid_or_unavailable_model_records_unavailable_result(tmp_path: Path) -> None:

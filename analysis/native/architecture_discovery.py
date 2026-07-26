@@ -1,9 +1,4 @@
-"""Bounded V6-inspired architecture discovery backed by a real provider.
-
-The input is repository metadata only.  Source-bearing excerpts remain owned by
-later specialist tasks, so a planning artifact never becomes a second source
-store or telemetry leak.
-"""
+"""Bounded V6-inspired architecture discovery backed by a real provider."""
 
 from __future__ import annotations
 
@@ -22,11 +17,16 @@ from domain.contracts import (
     RepositorySnapshot,
     RunBudget,
 )
+from infrastructure.artifacts.store import FilesystemArtifactStore, StoredArtifact
 from infrastructure.db.planning_repository import SqlitePlanningRepository
+from infrastructure.db.snapshot_repository import SqliteSnapshotRepository
 
 PROMPT_TEMPLATE = "v6-architecture-discovery"
 PROMPT_VERSION = 1
 MAX_FILE_SUMMARY = 80
+MAX_SOURCE_FILES = 10
+MAX_SOURCE_CHARS_PER_FILE = 3_000
+MAX_SOURCE_CHARS_TOTAL = 20_000
 PROMPT_PATH = (
     Path(__file__).resolve().parents[2]
     / "prompts"
@@ -150,11 +150,19 @@ class ArchitectureDiscoveryService:
     """Request and durably record one validated architecture model."""
 
     def __init__(
-        self, *, repository: SqlitePlanningRepository, gateway: ModelGateway | None, model: str
+        self,
+        *,
+        repository: SqlitePlanningRepository,
+        gateway: ModelGateway | None,
+        model: str,
+        snapshots: SqliteSnapshotRepository | None = None,
+        artifacts: FilesystemArtifactStore | None = None,
     ) -> None:
         self.repository = repository
         self.gateway = gateway
         self.model = model
+        self.snapshots = snapshots
+        self.artifacts = artifacts
 
     async def discover(
         self,
@@ -164,7 +172,10 @@ class ArchitectureDiscoveryService:
         files: list[dict[str, Any]],
         budget: RunBudget,
     ) -> ArchitectureDiscovery:
-        summary = build_architecture_input(files)
+        summary = build_architecture_input(
+            files,
+            source_files=self._source_bundle(snapshot, files),
+        )
         prompt = architecture_system_prompt()
         input_hash = _hash(summary)
         result: dict[str, Any]
@@ -220,6 +231,47 @@ class ArchitectureDiscoveryService:
         self.repository.record_discovery(discovery)
         return discovery
 
+    def _source_bundle(
+        self,
+        snapshot: RepositorySnapshot,
+        files: list[dict[str, Any]],
+    ) -> tuple[dict[str, Any], ...]:
+        """Read a small verified source sample from immutable artifacts only."""
+        if self.snapshots is None or self.artifacts is None:
+            return ()
+        contexts = self.snapshots.file_contexts(
+            snapshot.snapshot_id,
+            select_architecture_source_paths(files),
+        )
+        selected: list[dict[str, Any]] = []
+        remaining = MAX_SOURCE_CHARS_TOTAL
+        for context in contexts:
+            if remaining <= 0:
+                break
+            try:
+                artifact = StoredArtifact(
+                    artifact_id=str(context["artifact_id"]),
+                    content_hash=str(context["content_hash"]),
+                    artifact_kind="source",
+                    storage_path=str(context["storage_path"]),
+                    byte_size=int(context["byte_size"]),
+                    media_type=context.get("media_type"),
+                )
+                content = self.artifacts.read(artifact).decode("utf-8", errors="replace")
+            except (OSError, UnicodeError, ValueError):
+                continue
+            excerpt = content[: min(MAX_SOURCE_CHARS_PER_FILE, remaining)]
+            selected.append(
+                {
+                    "relative_path": str(context["relative_path"]),
+                    "language": str(context["language"]),
+                    "content": excerpt,
+                    "truncated": len(excerpt) < len(content),
+                }
+            )
+            remaining -= len(excerpt)
+        return tuple(selected)
+
 
 def architecture_system_prompt() -> str:
     """Load the editable V6-derived prompt template from the tracked prompt tree."""
@@ -229,8 +281,12 @@ def architecture_system_prompt() -> str:
         raise RuntimeError(f"architecture discovery prompt unavailable: {PROMPT_PATH}") from exc
 
 
-def build_architecture_input(files: list[dict[str, Any]]) -> dict[str, Any]:
-    """Bound prompt input by metadata count; never include artifacts or content."""
+def build_architecture_input(
+    files: list[dict[str, Any]],
+    *,
+    source_files: tuple[dict[str, Any], ...] = (),
+) -> dict[str, Any]:
+    """Bound metadata plus a verified source sample for architecture planning."""
     ordered = sorted(files, key=lambda item: str(item["relative_path"]))[:MAX_FILE_SUMMARY]
     languages = Counter(str(item.get("language", "unknown")) for item in files)
     classifications = Counter(str(item.get("classification", "unknown")) for item in files)
@@ -247,7 +303,51 @@ def build_architecture_input(files: list[dict[str, Any]]) -> dict[str, Any]:
             for item in ordered
         ],
         "truncated": len(files) > len(ordered),
+        "source_files": list(source_files),
     }
+
+
+def select_architecture_source_paths(files: list[dict[str, Any]]) -> tuple[str, ...]:
+    """Prioritize architecture-bearing files and exclude package/test boilerplate."""
+    priority_names = {
+        "main.py": 100,
+        "app.py": 95,
+        "server.py": 90,
+        "application.py": 90,
+        "manage.py": 85,
+        "pyproject.toml": 80,
+        "package.json": 80,
+        "docker-compose.yml": 80,
+        "docker-compose.yaml": 80,
+    }
+    priority_parts = {
+        "api": 50,
+        "routes": 50,
+        "controllers": 45,
+        "services": 45,
+        "models": 40,
+        "database": 40,
+        "config": 35,
+        "settings": 35,
+    }
+    candidates: list[tuple[int, str]] = []
+    for item in files:
+        relative_path = str(item["relative_path"])
+        path = Path(relative_path)
+        if path.name == "__init__.py" or item.get("classification") == "test":
+            continue
+        if item.get("classification") not in {"source", "config"}:
+            continue
+        score = priority_names.get(path.name, 0)
+        score += max((priority_parts.get(part.lower(), 0) for part in path.parts), default=0)
+        score += min(int(item.get("line_count", 0)), 2_000) // 100
+        candidates.append((score, relative_path))
+    return tuple(
+        path
+        for _score, path in sorted(candidates, key=lambda item: (-item[0], item[1]))[
+            :MAX_SOURCE_FILES
+        ]
+    )
 
 
 def _hash(value: object) -> str:
