@@ -1,4 +1,4 @@
-"""Bounded V6-inspired architecture discovery with a deterministic fallback.
+"""Bounded V6-inspired architecture discovery backed by a real provider.
 
 The input is repository metadata only.  Source-bearing excerpts remain owned by
 later specialist tasks, so a planning artifact never becomes a second source
@@ -147,7 +147,7 @@ class ArchitectureDiscoveryOutput(ContractModel):
 
 
 class ArchitectureDiscoveryService:
-    """Request one validated architecture model, otherwise retain facts only."""
+    """Request and durably record one validated architecture model."""
 
     def __init__(
         self, *, repository: SqlitePlanningRepository, gateway: ModelGateway | None, model: str
@@ -170,7 +170,9 @@ class ArchitectureDiscoveryService:
         result: dict[str, Any]
         status: str
         if self.gateway is None:
-            result, status = deterministic_fallback(summary, "model provider unavailable")
+            result = {"unknowns": ("model provider unavailable",)}
+            # "fallback" is a legacy persisted enum; this branch does not plan or dispatch roles.
+            status = "fallback"
         else:
             try:
                 response = await self.gateway.complete(
@@ -198,9 +200,9 @@ class ArchitectureDiscoveryService:
                 )
                 status = "model-validated"
             except (ValidationError, ValueError, RuntimeError, OSError):
-                result, status = deterministic_fallback(
-                    summary, "model result unavailable or invalid"
-                )
+                result = {"unknowns": ("model result unavailable or invalid",)}
+                # Legacy persisted enum; this branch does not plan or dispatch roles.
+                status = "fallback"
         discovery = ArchitectureDiscovery(
             discovery_id=_stable_id(run_id, input_hash),
             run_id=run_id,
@@ -246,29 +248,6 @@ def build_architecture_input(files: list[dict[str, Any]]) -> dict[str, Any]:
         ],
         "truncated": len(files) > len(ordered),
     }
-
-
-def deterministic_fallback(summary: dict[str, Any], reason: str) -> tuple[dict[str, Any], str]:
-    return (
-        {
-            "system_name": None,
-            "system_type": "unknown",
-            "architecture_patterns": (),
-            "modules": (),
-            "dependencies": (),
-            "data_flows": (),
-            "api_endpoints": (),
-            "design_patterns": (),
-            "tech_stack": {"frameworks": (), "libraries": ()},
-            "database_schema": (),
-            "security_architecture": {"authentication": (), "authorization": (), "concerns": ()},
-            "performance_characteristics": {"bottlenecks": (), "optimizations": ()},
-            "anti_patterns": (),
-            "architectural_smells": (),
-            "unknowns": (reason, "deterministic fallback contains no inferred architecture"),
-        },
-        "fallback",
-    )
 
 
 def _hash(value: object) -> str:

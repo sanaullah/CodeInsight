@@ -162,7 +162,7 @@ def test_valid_model_discovery_is_validated_and_durable(tmp_path: Path) -> None:
     assert len(str(stored["prompt_content_hash"])) == 64
 
 
-def test_invalid_or_unavailable_model_falls_back_without_inference(tmp_path: Path) -> None:
+def test_invalid_or_unavailable_model_records_unavailable_result(tmp_path: Path) -> None:
     repository, snapshot = _setup(tmp_path)
     result = asyncio.run(
         ArchitectureDiscoveryService(
@@ -170,5 +170,4 @@ def test_invalid_or_unavailable_model_falls_back_without_inference(tmp_path: Pat
         ).discover(run_id="run-1", snapshot=snapshot, files=_files(), budget=RunBudget())
     )
     assert result.status == "fallback"
-    assert result.result["modules"] == ()
     assert "invalid" in result.result["unknowns"][0]

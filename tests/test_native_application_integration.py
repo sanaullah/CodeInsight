@@ -335,7 +335,7 @@ async def test_unconfigured_provider_completes_truthful_index_only_run(
 
 
 @pytest.mark.asyncio
-async def test_provider_failures_are_bounded_and_surface_needs_attention(
+async def test_provider_failures_surface_needs_attention_without_static_role_fallback(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "provider-failure.db"
@@ -356,18 +356,17 @@ async def test_provider_failures_are_bounded_and_surface_needs_attention(
     )
     status, run = await _wait_for_terminal(service, submitted.run_id)
     assert status == AnalysisStatus.NEEDS_ATTENTION
-    assert run.result["failed_task_count"] == 1
+    assert "AI architecture discovery" in run.result["reason"]
     assert run.events[-1].event_type == "analysis_needs_attention"
     intelligence = await service.intelligence(submitted.run_id)
     assert intelligence is not None
-    assert intelligence.tasks[0]["status"] == "failed"
-    assert intelligence.model_calls[0]["status"] == "failed"
-    assert gateway.calls == 4
+    assert not intelligence.tasks
+    assert gateway.calls == 1
     await service.close()
 
 
 @pytest.mark.asyncio
-async def test_provider_contract_failures_are_sanitized_and_bounded(
+async def test_provider_contract_failures_do_not_dispatch_static_roles(
     tmp_path: Path,
 ) -> None:
     database_path = tmp_path / "provider-contract-failure.db"
@@ -387,16 +386,13 @@ async def test_provider_contract_failures_are_sanitized_and_bounded(
         )
     )
 
-    status, _run = await _wait_for_terminal(service, submitted.run_id)
+    status, run = await _wait_for_terminal(service, submitted.run_id)
     assert status == AnalysisStatus.NEEDS_ATTENTION
+    assert "AI architecture discovery" in run.result["reason"]
     intelligence = await service.intelligence(submitted.run_id)
     assert intelligence is not None
-    error = intelligence.tasks[0]["error"]["message"]
-    assert "category=response_schema_validation" in error
-    assert "raw model prose" not in error
-    assert "private-provider-output.py" not in error
-    assert intelligence.model_calls[0]["status"] == "failed"
-    assert gateway.calls == 4
+    assert not intelligence.tasks
+    assert gateway.calls == 1
     await service.close()
 
 

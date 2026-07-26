@@ -43,6 +43,10 @@ class NativeAnalysisResult:
     failed_task_count: int = 0
 
 
+class AIPlanningUnavailable(RuntimeError):
+    """Raised when a configured provider cannot supply a validated role plan."""
+
+
 class NativeAnalysisCoordinator:
     """Keep durable wave state outside adaptive specialist execution."""
 
@@ -59,6 +63,7 @@ class NativeAnalysisCoordinator:
         architecture_discovery: ArchitectureDiscoveryService | None = None,
         role_proposals: AiRoleProposalService | None = None,
         planning: SqlitePlanningRepository | None = None,
+        require_ai_plan: bool = False,
         assessor: CoverageAssessor | None = None,
     ) -> None:
         self.ledger = ledger
@@ -75,6 +80,7 @@ class NativeAnalysisCoordinator:
         self.architecture_discovery = architecture_discovery
         self.role_proposals = role_proposals
         self.planning = planning
+        self.require_ai_plan = require_ai_plan
         self.assessor = assessor or CoverageAssessor()
 
     async def execute(
@@ -166,18 +172,35 @@ class NativeAnalysisCoordinator:
                     "architecture_discovery_completed",
                     {"run_id": run_id, "status": discovery.status},
                 )
+                if self.require_ai_plan and discovery.status != "model-validated":
+                    self.event_sink(
+                        "ai_role_plan_required",
+                        {
+                            "run_id": run_id,
+                            "reason": (
+                                "architecture discovery did not return a validated model result"
+                            ),
+                        },
+                    )
+                    raise AIPlanningUnavailable(
+                        "AI architecture discovery did not return a validated result"
+                    )
                 if self.role_proposals is not None and self.planning is not None:
                     proposal_output = await self.role_proposals.propose(
                         run_id=run_id, discovery=discovery, budget=budget
                     )
                     if proposal_output is None:
                         self.event_sink(
-                            "ai_role_proposals_unavailable",
+                            "ai_role_plan_required",
                             {
                                 "run_id": run_id,
-                                "reason": "architecture discovery was unavailable or invalid",
+                                "reason": "AI role proposals did not return a validated result",
                             },
                         )
+                        if self.require_ai_plan:
+                            raise AIPlanningUnavailable(
+                                "AI role proposals did not return a validated result"
+                            )
                     else:
                         ai_plan = self._validated_ai_plan(
                             run_id=run_id,
@@ -187,6 +210,10 @@ class NativeAnalysisCoordinator:
                             budget=budget,
                             proposals=proposal_output.roles,
                         )
+                        if ai_plan is None and self.require_ai_plan:
+                            raise AIPlanningUnavailable(
+                                "AI role proposals did not produce an approved role plan"
+                            )
             if resuming_wave_id is not None:
                 wave_budget = budget
             else:
@@ -194,16 +221,20 @@ class NativeAnalysisCoordinator:
                 wave_budget = budget.model_copy(
                     update={"max_specialists": min(budget.max_specialists, remaining_task_budget)}
                 )
-            plan = next_plan or ai_plan or self.planner.plan(
-                run_id=run_id,
-                snapshot=snapshot,
-                files=files,
-                target_paths=tuple(str(item["relative_path"]) for item in targets),
-                mode=mode,
-                budget=wave_budget,
-                wave_number=wave_number,
-                remaining_gaps=remaining_gaps,
-            )
+            plan = next_plan or ai_plan
+            if plan is None and not self.require_ai_plan:
+                plan = self.planner.plan(
+                    run_id=run_id,
+                    snapshot=snapshot,
+                    files=files,
+                    target_paths=tuple(str(item["relative_path"]) for item in targets),
+                    mode=mode,
+                    budget=wave_budget,
+                    wave_number=wave_number,
+                    remaining_gaps=remaining_gaps,
+                )
+            if plan is None:
+                raise AIPlanningUnavailable("AI role planning is required before task dispatch")
             next_plan = None
             if plan.wave_id == resuming_wave_id:
                 self.event_sink(

@@ -12,7 +12,7 @@ from urllib.request import urlopen
 from uuid import uuid4
 
 from analysis.native.architecture_discovery import ArchitectureDiscoveryService
-from analysis.native.coordinator import NativeAnalysisCoordinator
+from analysis.native.coordinator import AIPlanningUnavailable, NativeAnalysisCoordinator
 from analysis.native.harness import TrustedSpecialistHarness
 from analysis.native.model_client import GatewaySpecialistClient
 from analysis.native.role_generation import AiRoleProposalService
@@ -165,6 +165,7 @@ class NativeAnalysisExecutor:
                 model=request.model_name or self.default_model,
             ),
             planning=SqlitePlanningRepository(self.ledger),
+            require_ai_plan=not self.offline,
         )
         if isinstance(self.gateway, BoundedModelGateway):
             await self.gateway.configure_run_budget(
@@ -712,6 +713,16 @@ class AnalysisService:
                     TraceEvent(name="analysis_run_cancelled", run_id=run_id)
                 )
             raise
+        except AIPlanningUnavailable as exc:
+            result = {"outcome": "needs_attention", "reason": str(exc)}
+            ledger.needs_attention(run_id, result)
+            self._get_tracer().emit(
+                TraceEvent(
+                    name="analysis_run_needs_attention",
+                    run_id=run_id,
+                    attributes=_trace_attributes({"reason": str(exc)}),
+                )
+            )
         except Exception as exc:
             ledger.fail(run_id, str(exc))
             self._get_tracer().emit(
