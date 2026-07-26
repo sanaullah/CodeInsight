@@ -123,6 +123,7 @@ class RoleProposal(ContractModel):
     rationale: str = Field(min_length=1, max_length=4_000)
     coverage_targets: tuple[str, ...] = Field(min_length=1, max_length=20)
     required_capabilities: tuple[str, ...] = Field(min_length=1, max_length=8)
+    focus_paths: tuple[str, ...] = Field(default=(), max_length=80)
     validation_status: Literal["proposed", "approved", "rejected", "fallback"]
     validation_reason: str | None = Field(default=None, max_length=4_000)
     approved_role_id: str | None = None

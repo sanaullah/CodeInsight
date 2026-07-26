@@ -198,7 +198,7 @@ def test_semantic_schema_is_canonical_and_indexed(tmp_path: Path) -> None:
                 "SELECT name FROM sqlite_master WHERE type = 'index'"
             )
         }
-    assert version == SCHEMA_VERSION == 8
+    assert version == SCHEMA_VERSION
     assert {
         "semantic_components",
         "semantic_memberships",

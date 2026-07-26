@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import hashlib
+import json
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
@@ -14,16 +16,19 @@ from analysis.native.pipeline import (
     correlate_and_persist,
 )
 from analysis.native.planning import RepositoryRolePlanner
+from analysis.native.role_generation import AiRoleProposalService, ProposedRole
 from domain.contracts import (
     AnalysisMode,
     CanonicalFinding,
     CoverageAssessment,
     RepositorySnapshot,
+    RoleProposal,
     RunBudget,
     RunStage,
     WavePlan,
 )
 from infrastructure.db.analysis_repository import SqliteAnalysisRepository
+from infrastructure.db.planning_repository import SqlitePlanningRepository
 from infrastructure.db.run_ledger import SqliteRunLedger
 from infrastructure.db.snapshot_repository import SqliteSnapshotRepository
 from infrastructure.db.task_repository import SqliteTaskRepository
@@ -52,6 +57,8 @@ class NativeAnalysisCoordinator:
         event_sink: Callable[[str, dict[str, Any]], None] | None = None,
         planner: RepositoryRolePlanner | None = None,
         architecture_discovery: ArchitectureDiscoveryService | None = None,
+        role_proposals: AiRoleProposalService | None = None,
+        planning: SqlitePlanningRepository | None = None,
         assessor: CoverageAssessor | None = None,
     ) -> None:
         self.ledger = ledger
@@ -66,6 +73,8 @@ class NativeAnalysisCoordinator:
         )
         self.planner = planner or RepositoryRolePlanner()
         self.architecture_discovery = architecture_discovery
+        self.role_proposals = role_proposals
+        self.planning = planning
         self.assessor = assessor or CoverageAssessor()
 
     async def execute(
@@ -145,16 +154,39 @@ class NativeAnalysisCoordinator:
             resuming_wave_id is not None or total_tasks < budget.max_tasks
         ):
             self._stage(run_id, RunStage.PLAN_WAVE)
-            # Discovery is optional until the configured provider profile is proven.
-            # Its result is durable planning context only; trusted role planning remains
-            # the dispatch authority for this milestone.
+            ai_plan: WavePlan | None = None
             if self.architecture_discovery is not None and wave_number == 1 and next_plan is None:
-                await self.architecture_discovery.discover(
+                discovery = await self.architecture_discovery.discover(
                     run_id=run_id,
                     snapshot=snapshot,
                     files=files,
                     budget=budget,
                 )
+                self.event_sink(
+                    "architecture_discovery_completed",
+                    {"run_id": run_id, "status": discovery.status},
+                )
+                if self.role_proposals is not None and self.planning is not None:
+                    proposal_output = await self.role_proposals.propose(
+                        run_id=run_id, discovery=discovery, budget=budget
+                    )
+                    if proposal_output is None:
+                        self.event_sink(
+                            "ai_role_proposals_unavailable",
+                            {
+                                "run_id": run_id,
+                                "reason": "architecture discovery was unavailable or invalid",
+                            },
+                        )
+                    else:
+                        ai_plan = self._validated_ai_plan(
+                            run_id=run_id,
+                            snapshot=snapshot,
+                            files=files,
+                            target_paths=tuple(str(item["relative_path"]) for item in targets),
+                            budget=budget,
+                            proposals=proposal_output.roles,
+                        )
             if resuming_wave_id is not None:
                 wave_budget = budget
             else:
@@ -162,7 +194,7 @@ class NativeAnalysisCoordinator:
                 wave_budget = budget.model_copy(
                     update={"max_specialists": min(budget.max_specialists, remaining_task_budget)}
                 )
-            plan = next_plan or self.planner.plan(
+            plan = next_plan or ai_plan or self.planner.plan(
                 run_id=run_id,
                 snapshot=snapshot,
                 files=files,
@@ -280,6 +312,93 @@ class NativeAnalysisCoordinator:
             failed_task_count=failed_task_count,
         )
 
+    def _validated_ai_plan(
+        self,
+        *,
+        run_id: str,
+        snapshot: RepositorySnapshot,
+        files: Sequence[dict[str, Any]],
+        target_paths: tuple[str, ...],
+        budget: RunBudget,
+        proposals: Sequence[ProposedRole],
+    ) -> WavePlan | None:
+        """Persist every candidate, then dispatch only host-approved proposals."""
+        if self.planning is None:
+            return None
+        allowed_paths = set(target_paths)
+        approved: list[RoleProposal] = []
+        rejected: list[RoleProposal] = []
+        for candidate in proposals[: budget.max_specialists]:
+            payload = candidate.model_dump(mode="json")
+            proposal_hash = _hash_payload(payload)
+            proposal_id = _stable_id(run_id, f"role-proposal:{proposal_hash}")
+            proposed = RoleProposal(
+                proposal_id=proposal_id,
+                run_id=run_id,
+                wave_number=1,
+                proposal_hash=proposal_hash,
+                name=candidate.name,
+                mission=candidate.mission,
+                rationale=candidate.rationale,
+                coverage_targets=candidate.coverage_targets,
+                required_capabilities=candidate.required_capabilities,
+                focus_paths=candidate.focus_paths,
+                validation_status="proposed",
+            )
+            reason = self.planner.validate_role_proposal(
+                proposed, allowed_paths=allowed_paths
+            )
+            if reason is None:
+                approved.append(
+                    proposed.model_copy(
+                        update={"validation_status": "approved"}
+                    )
+                )
+            else:
+                rejected.append(
+                    proposed.model_copy(
+                        update={"validation_status": "rejected", "validation_reason": reason}
+                    )
+                )
+        if not approved:
+            for proposal in rejected:
+                self.planning.record_role_proposal(proposal)
+            self.event_sink(
+                "ai_role_proposals_rejected",
+                {"run_id": run_id, "proposal_count": len(rejected)},
+            )
+            return None
+        try:
+            plan = self.planner.plan_from_role_proposals(
+                run_id=run_id,
+                snapshot=snapshot,
+                files=files,
+                target_paths=target_paths,
+                budget=budget,
+                wave_number=1,
+                proposals=approved,
+            )
+        except ValueError as exc:
+            for proposal in rejected:
+                self.planning.record_role_proposal(proposal)
+            self.event_sink(
+                "ai_role_proposals_unusable",
+                {"run_id": run_id, "reason": str(exc)},
+            )
+            return None
+        for proposal in (*approved, *rejected):
+            self.planning.record_role_proposal(proposal)
+        self.event_sink(
+            "ai_role_plan_selected",
+            {
+                "run_id": run_id,
+                "approved_count": len(approved),
+                "rejected_count": len(rejected),
+                "role_count": len(plan.roles),
+            },
+        )
+        return plan
+
     def _persist_plan(self, plan: WavePlan, budget: RunBudget) -> None:
         self.tasks.create_wave(
             run_id=plan.run_id,
@@ -334,3 +453,13 @@ class NativeAnalysisCoordinator:
             "stage_changed",
             {"run_id": run_id, "stage": stage.value},
         )
+
+
+def _stable_id(namespace: str, value: str) -> str:
+    return hashlib.sha256(f"{namespace}\0{value}".encode()).hexdigest()
+
+
+def _hash_payload(value: dict[str, Any]) -> str:
+    return hashlib.sha256(
+        json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()

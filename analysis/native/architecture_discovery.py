@@ -197,7 +197,7 @@ class ArchitectureDiscoveryService:
                     mode="json"
                 )
                 status = "model-validated"
-            except (ValidationError, ValueError, RuntimeError):
+            except (ValidationError, ValueError, RuntimeError, OSError):
                 result, status = deterministic_fallback(
                     summary, "model result unavailable or invalid"
                 )

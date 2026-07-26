@@ -29,15 +29,63 @@ class EvidenceGateway:
     async def complete(self, request: ModelRequest) -> ModelResponse:
         self.calls += 1
         self.active += 1
-        self.started.set()
         self.max_active = max(self.max_active, self.active)
-        if self.delay:
-            await asyncio.sleep(self.delay)
-        payload = json.loads(request.user_prompt)
-        file = payload["files"][0]
-        self.active -= 1
-        return ModelResponse(
-            content={
+        kind = request.correlation.get("kind")
+        if kind == "architecture-discovery":
+            content = {
+                "system_name": "fixture",
+                "system_type": "api_service",
+                "architecture_patterns": [],
+                "modules": [],
+                "dependencies": [],
+                "data_flows": [],
+                "api_endpoints": [],
+                "tech_stack": {"frameworks": [], "libraries": []},
+                "database_schema": [],
+                "design_patterns": [],
+                "security_architecture": {
+                    "authentication": [], "authorization": [], "concerns": []
+                },
+                "performance_characteristics": {"bottlenecks": [], "optimizations": []},
+                "anti_patterns": [],
+                "architectural_smells": [],
+                "unknowns": [],
+            }
+        elif kind == "role-proposals":
+            content = {
+                "roles": [
+                    {
+                        "name": "Architecture Specialist",
+                        "mission": "Review system structure.",
+                        "rationale": "The architecture model requires structural review.",
+                        "coverage_targets": ["architecture"],
+                        "required_capabilities": ["architecture"],
+                        "focus_paths": [],
+                    },
+                    {
+                        "name": "Implementation Specialist",
+                        "mission": "Review implementation behavior.",
+                        "rationale": "The snapshot contains source code.",
+                        "coverage_targets": ["implementation"],
+                        "required_capabilities": ["language-analysis"],
+                        "focus_paths": [],
+                    },
+                    {
+                        "name": "Reliability Specialist",
+                        "mission": "Review test behavior.",
+                        "rationale": "The snapshot contains test code.",
+                        "coverage_targets": ["reliability"],
+                        "required_capabilities": ["test-quality"],
+                        "focus_paths": [],
+                    },
+                ],
+                "unknowns": [],
+            }
+        else:
+            self.started.set()
+            payload = json.loads(request.user_prompt)
+            file = payload["files"][0]
+            content = {
                 "analyzed_paths": [item["relative_path"] for item in payload["files"]],
                 "evidence": [
                     {
@@ -63,7 +111,12 @@ class EvidenceGateway:
                 ],
                 "unresolved_uncertainty": [],
                 "usage": {},
-            },
+            }
+        if self.delay and kind is None:
+            await asyncio.sleep(self.delay)
+        self.active -= 1
+        return ModelResponse(
+            content=content,
             provider="fixture",
             model=request.model,
             usage=ModelUsage(input_tokens=20, output_tokens=10, cost_usd=0.001),
@@ -171,7 +224,7 @@ async def test_native_application_path_persists_full_intelligence(
         )
     )
     status, run = await _wait_for_terminal(service, submitted.run_id)
-    assert status == AnalysisStatus.SUCCEEDED
+    assert status == AnalysisStatus.SUCCEEDED, run.error
     assert run.current_stage == "complete"
     assert run.snapshot_id
     assert run.result["provider_mode"] == "model-backed"
@@ -185,9 +238,9 @@ async def test_native_application_path_persists_full_intelligence(
     assert all(task["status"] == "succeeded" for task in intelligence.tasks)
     assert intelligence.findings
     assert intelligence.coverage
-    assert len(intelligence.model_calls) == gateway.calls
+    assert len(intelligence.model_calls) == 3
     assert all(item["attempt_id"] for item in intelligence.model_calls)
-    assert len(intelligence.prompt_artifacts) == gateway.calls
+    assert len(intelligence.prompt_artifacts) == 3
     prompt = intelligence.prompt_artifacts[0]
     assert prompt["prompt_template"] == "native-specialist-system"
     assert prompt["prompt_version"] == 2
@@ -204,7 +257,8 @@ async def test_native_application_path_persists_full_intelligence(
     assert "Specialist contract:" in prompt["prompt_text"]
     assert "return calculate(2)" not in prompt["prompt_text"]
     assert "def calculate(value)" not in prompt["prompt_text"]
-    assert intelligence.usage["total_tokens"] == gateway.calls * 30
+    assert intelligence.usage["total_tokens"] == 90
+    assert gateway.calls == 5
     assert gateway.max_active <= 2
     names = {event.name for event in tracer.events}
     assert {
@@ -308,7 +362,7 @@ async def test_provider_failures_are_bounded_and_surface_needs_attention(
     assert intelligence is not None
     assert intelligence.tasks[0]["status"] == "failed"
     assert intelligence.model_calls[0]["status"] == "failed"
-    assert gateway.calls == 3
+    assert gateway.calls == 4
     await service.close()
 
 
@@ -342,7 +396,7 @@ async def test_provider_contract_failures_are_sanitized_and_bounded(
     assert "raw model prose" not in error
     assert "private-provider-output.py" not in error
     assert intelligence.model_calls[0]["status"] == "failed"
-    assert gateway.calls == 3
+    assert gateway.calls == 4
     await service.close()
 
 

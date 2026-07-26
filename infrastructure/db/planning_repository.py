@@ -73,6 +73,7 @@ class SqlitePlanningRepository:
             "rationale": proposal.rationale,
             "coverage_targets": proposal.coverage_targets,
             "required_capabilities": proposal.required_capabilities,
+            "focus_paths": proposal.focus_paths,
         }
         values = (
             proposal.proposal_id,

@@ -11,6 +11,7 @@ from domain.contracts import (
     AnalysisMode,
     AnalysisTask,
     RepositorySnapshot,
+    RoleProposal,
     RoleSpec,
     RunBudget,
     WavePlan,
@@ -169,6 +170,119 @@ class RepositoryRolePlanner:
             coverage_targets=coverage_targets,
             reserved_follow_up=wave_number > 1,
         )
+
+    def plan_from_role_proposals(
+        self,
+        *,
+        run_id: str,
+        snapshot: RepositorySnapshot,
+        files: Sequence[dict[str, Any]],
+        target_paths: Sequence[str],
+        budget: RunBudget,
+        wave_number: int,
+        proposals: Sequence[RoleProposal],
+    ) -> WavePlan:
+        """Turn approved AI candidates into bounded, host-owned roles and tasks."""
+        if wave_number != 1:
+            raise ValueError("AI role proposals are only valid for the first wave")
+        if not proposals:
+            raise ValueError("no approved AI role proposals")
+        by_path = {str(item["relative_path"]): item for item in files}
+        targets = [by_path[path] for path in target_paths if path in by_path] or list(files)
+        target_by_path = {str(item["relative_path"]): item for item in targets}
+        accepted = tuple(proposals[: budget.max_specialists])
+        token_pool = int(budget.max_tokens * (1 - budget.reserved_follow_up_fraction))
+        cost_pool = budget.max_cost_usd * (1 - budget.reserved_follow_up_fraction)
+        wave_id = _stable_id(run_id, f"wave:{wave_number}")
+        roles: list[RoleSpec] = []
+        tasks: list[AnalysisTask] = []
+        for index, proposal in enumerate(accepted):
+            if proposal.focus_paths:
+                role_files = [
+                    target_by_path[path]
+                    for path in proposal.focus_paths
+                    if path in target_by_path
+                ]
+            else:
+                role_files = list(targets)
+            if not role_files:
+                continue
+            role_id = _stable_id(wave_id, proposal.proposal_hash)
+            model_policy = (
+                "strong"
+                if set(proposal.required_capabilities)
+                & {"architecture", "security", "verification"}
+                else "balanced"
+            )
+            role = RoleSpec(
+                role_id=role_id,
+                name=proposal.name,
+                mission=proposal.mission,
+                rationale=proposal.rationale,
+                coverage_targets=proposal.coverage_targets,
+                required_capabilities=proposal.required_capabilities,
+                allowed_tools=tuple(sorted(TRUSTED_TOOLS)),
+                input_artifact_ids=tuple(str(item["artifact_id"]) for item in role_files),
+                model_policy=model_policy,
+                token_budget=max(1, token_pool // len(accepted)),
+                time_budget_seconds=max(
+                    1, min(900, budget.max_elapsed_seconds // max(1, len(accepted)))
+                ),
+                completion_criteria=(
+                    "return only typed evidence-backed finding proposals",
+                    "identify unresolved uncertainty and analyzed targets",
+                ),
+            )
+            self.validate_role(role)
+            tasks.append(
+                AnalysisTask(
+                    task_id=_stable_id(role_id, "specialist-analysis"),
+                    run_id=run_id,
+                    wave_id=wave_id,
+                    role_id=role_id,
+                    task_type="specialist_analysis",
+                    priority=index * 10,
+                    immutable_input_ids=(
+                        snapshot.snapshot_id,
+                        *(str(item["file_id"]) for item in role_files),
+                    ),
+                    configuration_hash=snapshot.configuration_hash,
+                    idempotency_key=_stable_id(
+                        snapshot.identity_hash,
+                        f"{run_id}:{wave_number}:{proposal.proposal_hash}",
+                    ),
+                    model_policy=model_policy,
+                    token_budget=role.token_budget,
+                    cost_budget_usd=max(0, cost_pool / len(accepted)),
+                    time_budget_seconds=role.time_budget_seconds,
+                    tool_call_budget=min(50, 5 + len(role_files)),
+                    max_attempts=3,
+                )
+            )
+            roles.append(role)
+        if not roles:
+            raise ValueError("approved AI role proposals had no trusted snapshot files")
+        return WavePlan(
+            wave_id=wave_id,
+            run_id=run_id,
+            wave_number=wave_number,
+            rationale="validated architecture-informed AI role proposals",
+            roles=tuple(roles),
+            tasks=tuple(tasks),
+            coverage_targets=tuple(
+                sorted({target for role in roles for target in role.coverage_targets})
+            ),
+        )
+
+    @staticmethod
+    def validate_role_proposal(
+        proposal: RoleProposal, *, allowed_paths: set[str]
+    ) -> str | None:
+        if not set(proposal.required_capabilities).issubset(TRUSTED_CAPABILITIES):
+            return "requested an unsupported capability"
+        if any(path not in allowed_paths for path in proposal.focus_paths):
+            return "requested a focus path outside the selected snapshot scope"
+        return None
 
     @staticmethod
     def validate_role(role: RoleSpec) -> None:

@@ -11,9 +11,11 @@ from urllib.request import Request as UrlRequest
 from urllib.request import urlopen
 from uuid import uuid4
 
+from analysis.native.architecture_discovery import ArchitectureDiscoveryService
 from analysis.native.coordinator import NativeAnalysisCoordinator
 from analysis.native.harness import TrustedSpecialistHarness
 from analysis.native.model_client import GatewaySpecialistClient
+from analysis.native.role_generation import AiRoleProposalService
 from api.config import ApiSettings, default_database_path
 from api.models import (
     AnalysisIntelligence,
@@ -40,6 +42,7 @@ from infrastructure.db.database import checkpoint_database
 from infrastructure.db.finding_repository import SqliteFindingRepository
 from infrastructure.db.history_repository import SqliteHistoryRepository
 from infrastructure.db.model_call_repository import SqliteModelCallRepository
+from infrastructure.db.planning_repository import SqlitePlanningRepository
 from infrastructure.db.prompt_artifact_repository import SqlitePromptArtifactRepository
 from infrastructure.db.run_ledger import SqliteRunLedger
 from infrastructure.db.semantic_architecture_query import (
@@ -152,6 +155,16 @@ class NativeAnalysisExecutor:
             analysis=analysis,
             scheduler=scheduler,
             event_sink=event_sink,
+            architecture_discovery=ArchitectureDiscoveryService(
+                repository=SqlitePlanningRepository(self.ledger),
+                gateway=None if self.offline else self.gateway,
+                model=request.model_name or self.default_model,
+            ),
+            role_proposals=AiRoleProposalService(
+                gateway=None if self.offline else self.gateway,
+                model=request.model_name or self.default_model,
+            ),
+            planning=SqlitePlanningRepository(self.ledger),
         )
         if isinstance(self.gateway, BoundedModelGateway):
             await self.gateway.configure_run_budget(

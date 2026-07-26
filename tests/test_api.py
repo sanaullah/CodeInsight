@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 from api.app import create_app
 from api.models import AnalysisRequest
 from application.analysis_service import AnalysisService, EventSink
+from infrastructure.db.database import SCHEMA_VERSION
 
 
 class FakeExecutor:
@@ -41,7 +42,7 @@ def test_health_frontend_and_analysis_lifecycle(tmp_path: Path) -> None:
             "environment_manager": "uv",
             "database_engine": "SQLite",
             "database_journal_mode": "WAL",
-            "database_schema_version": 8,
+            "database_schema_version": SCHEMA_VERSION,
             "artifact_store": "filesystem",
             "api_docs_url": "/api/docs",
             "read_only_analysis": True,
