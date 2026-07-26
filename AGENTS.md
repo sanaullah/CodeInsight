@@ -12,6 +12,10 @@
 - Work in the active checkout only; do not create or move worktrees unless the user explicitly requests it.
 - Preserve unrelated user changes and ignored local plans. Never add files under `docs/` solely to publish a local roadmap.
 - Split product work into reviewable conventional commits and rebuild `web/` whenever `frontend/` production source changes.
+- The user authorizes committing and pushing completed, validated milestones to
+  the existing configured Git remote without a separate conversational pause.
+  Do not open a pull request, create a release, or push unrelated/local-only
+  files without explicit authorization.
 - Update API contracts, frontend types, tests, and documentation together when a public behavior changes.
 - Prefer bounded queries and deterministic evidence links over plausible-looking derived claims.
 
