@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import uuid4
 
+from analysis.native.architecture_discovery import ArchitectureDiscoveryService
 from analysis.native.pipeline import (
     CoverageAssessor,
     CoverageInputs,
@@ -50,6 +51,7 @@ class NativeAnalysisCoordinator:
         scheduler: NativeTaskScheduler,
         event_sink: Callable[[str, dict[str, Any]], None] | None = None,
         planner: RepositoryRolePlanner | None = None,
+        architecture_discovery: ArchitectureDiscoveryService | None = None,
         assessor: CoverageAssessor | None = None,
     ) -> None:
         self.ledger = ledger
@@ -63,6 +65,7 @@ class NativeAnalysisCoordinator:
             )
         )
         self.planner = planner or RepositoryRolePlanner()
+        self.architecture_discovery = architecture_discovery
         self.assessor = assessor or CoverageAssessor()
 
     async def execute(
@@ -90,9 +93,7 @@ class NativeAnalysisCoordinator:
                 run_id, owner=owner, status="failed", error=str(exc)
             )
             raise
-        self.analysis.release_coordinator_lease(
-            run_id, owner=owner, status="completed"
-        )
+        self.analysis.release_coordinator_lease(run_id, owner=owner, status="completed")
         return result
 
     async def _execute_acquired(
@@ -118,9 +119,7 @@ class NativeAnalysisCoordinator:
                 failed_task_count=sum(
                     record["status"] != "succeeded"
                     for assessment in existing_coverage
-                    for record in self.analysis.task_records(
-                        run_id, assessment.wave_id
-                    )
+                    for record in self.analysis.task_records(run_id, assessment.wave_id)
                 ),
             )
         total_tasks = sum(
@@ -146,16 +145,22 @@ class NativeAnalysisCoordinator:
             resuming_wave_id is not None or total_tasks < budget.max_tasks
         ):
             self._stage(run_id, RunStage.PLAN_WAVE)
+            # Discovery is optional until the configured provider profile is proven.
+            # Its result is durable planning context only; trusted role planning remains
+            # the dispatch authority for this milestone.
+            if self.architecture_discovery is not None and wave_number == 1 and next_plan is None:
+                await self.architecture_discovery.discover(
+                    run_id=run_id,
+                    snapshot=snapshot,
+                    files=files,
+                    budget=budget,
+                )
             if resuming_wave_id is not None:
                 wave_budget = budget
             else:
                 remaining_task_budget = budget.max_tasks - total_tasks
                 wave_budget = budget.model_copy(
-                    update={
-                        "max_specialists": min(
-                            budget.max_specialists, remaining_task_budget
-                        )
-                    }
+                    update={"max_specialists": min(budget.max_specialists, remaining_task_budget)}
                 )
             plan = next_plan or self.planner.plan(
                 run_id=run_id,
@@ -189,12 +194,8 @@ class NativeAnalysisCoordinator:
             correlate_and_persist(self.analysis, run_id)
             self._stage(run_id, RunStage.ASSESS_COVERAGE)
             task_records = self.analysis.task_records(run_id, plan.wave_id)
-            failed_task_count += sum(
-                record["status"] != "succeeded" for record in task_records
-            )
-            verdict_count, accepted_count = self.analysis.wave_verdict_counts(
-                plan.wave_id
-            )
+            failed_task_count += sum(record["status"] != "succeeded" for record in task_records)
+            verdict_count, accepted_count = self.analysis.wave_verdict_counts(plan.wave_id)
             wave_summary = self.analysis.wave_analysis_summary(plan.wave_id)
             assessment = self.assessor.assess(
                 plan=plan,
@@ -206,9 +207,7 @@ class NativeAnalysisCoordinator:
                         for path in wave_summary["analyzed_paths"]
                         if path in by_path
                     ),
-                    evidence_file_ids=self.analysis.wave_evidence_file_ids(
-                        plan.wave_id
-                    ),
+                    evidence_file_ids=self.analysis.wave_evidence_file_ids(plan.wave_id),
                     verdict_count=verdict_count,
                     accepted_count=accepted_count,
                     unsupported_areas=tuple(
@@ -220,9 +219,7 @@ class NativeAnalysisCoordinator:
                             }
                         )
                     ),
-                    reported_uncertainty=wave_summary[
-                        "unresolved_uncertainty"
-                    ],
+                    reported_uncertainty=wave_summary["unresolved_uncertainty"],
                 ),
                 mode=mode,
                 budget=budget,
@@ -246,9 +243,7 @@ class NativeAnalysisCoordinator:
                     run_id=run_id,
                     snapshot=snapshot,
                     files=files,
-                    target_paths=tuple(
-                        str(item["relative_path"]) for item in targets
-                    ),
+                    target_paths=tuple(str(item["relative_path"]) for item in targets),
                     mode=mode,
                     budget=follow_up_budget,
                     wave_number=wave_number + 1,
@@ -295,9 +290,7 @@ class NativeAnalysisCoordinator:
         )
         for role in plan.roles:
             self.planner.validate_role(role)
-            self.tasks.add_role(
-                run_id=plan.run_id, wave_id=plan.wave_id, role=role
-            )
+            self.tasks.add_role(run_id=plan.run_id, wave_id=plan.wave_id, role=role)
         for task in plan.tasks:
             self.tasks.enqueue(task)
         self.event_sink(
