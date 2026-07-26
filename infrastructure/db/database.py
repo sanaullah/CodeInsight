@@ -14,7 +14,7 @@ from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 DEFAULT_BUSY_TIMEOUT_MS = 5_000
 
 _MIGRATION_1 = (
@@ -812,6 +812,15 @@ _MIGRATION_9 = (
     "ON generated_role_prompts(run_id, wave_number)",
 )
 
+_MIGRATION_10 = (
+    "ALTER TABLE architecture_discoveries "
+    "ADD COLUMN prompt_path TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE architecture_discoveries "
+    "ADD COLUMN prompt_content_hash TEXT NOT NULL DEFAULT ''",
+    "CREATE INDEX idx_architecture_discoveries_prompt_hash "
+    "ON architecture_discoveries(prompt_template, prompt_content_hash)",
+)
+
 MIGRATIONS: dict[int, tuple[str, tuple[str, ...]]] = {
     1: ("initial durable application ledger", _MIGRATION_1),
     2: ("durable finding review lifecycle", _MIGRATION_2),
@@ -822,6 +831,7 @@ MIGRATIONS: dict[int, tuple[str, tuple[str, ...]]] = {
     7: ("durable architecture component annotations", _MIGRATION_7),
     8: ("stable architecture annotation identity", _MIGRATION_8),
     9: ("durable architecture planning and generated role prompts", _MIGRATION_9),
+    10: ("architecture prompt template provenance", _MIGRATION_10),
 }
 
 

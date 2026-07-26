@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from analysis.native.architecture_discovery import (
+    PROMPT_PATH,
     ArchitectureDiscoveryService,
     architecture_system_prompt,
     build_architecture_input,
@@ -33,10 +34,19 @@ class ValidGateway:
                         "confidence": 0.9,
                     }
                 ],
-                "relationships": [],
-                "technology_stack": ["python"],
+                "dependencies": [],
+                "data_flows": [],
+                "api_endpoints": [],
+                "design_patterns": [],
+                "technology_stack": {"languages": ["python"]},
+                "frameworks": [],
+                "libraries": [],
+                "database_schema": [],
+                "security_architecture": [],
                 "security_considerations": [],
                 "performance_considerations": [],
+                "anti_patterns": [],
+                "architectural_smells": [],
                 "unknowns": [],
             },
             provider="fixture",
@@ -100,6 +110,8 @@ def _files() -> list[dict[str, str]]:
 
 
 def test_architecture_discovery_prompt_preserves_v6_contract_and_v2_bounds() -> None:
+    assert PROMPT_PATH.name == "architecture-discovery.md"
+    assert PROMPT_PATH.is_file()
     prompt = architecture_system_prompt()
     assert "System Structure" in prompt
     assert "Modules and Components" in prompt
@@ -126,6 +138,8 @@ def test_valid_model_discovery_is_validated_and_durable(tmp_path: Path) -> None:
     assert result.result["components"][0]["evidence_paths"] == ["api.py"]
     stored = repository.discoveries_for_run("run-1")[0]
     assert "SECRET" not in str(stored)
+    assert stored["prompt_path"] == "prompts/core/phases/planning/architecture-discovery.md"
+    assert len(str(stored["prompt_content_hash"])) == 64
 
 
 def test_invalid_or_unavailable_model_falls_back_without_inference(tmp_path: Path) -> None:

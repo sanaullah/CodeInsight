@@ -1,4 +1,3 @@
-# ruff: noqa: E501
 """Bounded V6-inspired architecture discovery with a deterministic fallback.
 
 The input is repository metadata only.  Source-bearing excerpts remain owned by
@@ -11,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
+from pathlib import Path
 from typing import Any
 
 from pydantic import Field, ValidationError
@@ -27,6 +27,14 @@ from infrastructure.db.planning_repository import SqlitePlanningRepository
 PROMPT_TEMPLATE = "v6-architecture-discovery"
 PROMPT_VERSION = 1
 MAX_FILE_SUMMARY = 80
+PROMPT_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "prompts"
+    / "core"
+    / "phases"
+    / "planning"
+    / "architecture-discovery.md"
+)
 
 
 class ArchitectureComponent(ContractModel):
@@ -40,10 +48,19 @@ class ArchitectureDiscoveryOutput(ContractModel):
     system_type: str = Field(min_length=1, max_length=500)
     architecture_patterns: tuple[str, ...] = Field(max_length=20)
     components: tuple[ArchitectureComponent, ...] = Field(max_length=40)
-    relationships: tuple[str, ...] = Field(max_length=80)
-    technology_stack: tuple[str, ...] = Field(max_length=80)
+    dependencies: tuple[str, ...] = Field(max_length=80)
+    data_flows: tuple[str, ...] = Field(max_length=80)
+    api_endpoints: tuple[str, ...] = Field(max_length=80)
+    design_patterns: tuple[str, ...] = Field(max_length=40)
+    technology_stack: dict[str, tuple[str, ...]]
+    frameworks: tuple[str, ...] = Field(max_length=40)
+    libraries: tuple[str, ...] = Field(max_length=80)
+    database_schema: tuple[str, ...] = Field(max_length=80)
+    security_architecture: tuple[str, ...] = Field(max_length=40)
     security_considerations: tuple[str, ...] = Field(max_length=40)
     performance_considerations: tuple[str, ...] = Field(max_length=40)
+    anti_patterns: tuple[str, ...] = Field(max_length=40)
+    architectural_smells: tuple[str, ...] = Field(max_length=40)
     unknowns: tuple[str, ...] = Field(max_length=40)
 
 
@@ -109,6 +126,8 @@ class ArchitectureDiscoveryService:
             input_hash=input_hash,
             prompt_template=PROMPT_TEMPLATE,
             prompt_version=PROMPT_VERSION,
+            prompt_path=PROMPT_PATH.relative_to(PROMPT_PATH.parents[4]).as_posix(),
+            prompt_content_hash=_hash_text(prompt),
             prompt_text=prompt,
             result=result,
             result_hash=_hash(result),
@@ -119,34 +138,11 @@ class ArchitectureDiscoveryService:
 
 
 def architecture_system_prompt() -> str:
-    """V6 source contract plus explicitly marked V2 safety requirements."""
-    return """# Architecture Discovery Prompt
-
-You are an expert software architect analyzing a codebase to extract comprehensive architecture information.
-
-## V6 source-derived task
-
-Analyze the provided codebase summary and identify: system structure and architecture pattern; major modules/components and their files; dependencies and relationships including import, call, data, and event links; API endpoints; design patterns; technology stack; security architecture; performance characteristics; anti-patterns and architectural smells.
-
-### System Structure, Modules and Components, Dependencies and Relationships
-
-### API Endpoints, Design Patterns, Technology Stack
-
-### Security Architecture, Performance Characteristics, Anti-Patterns and Smells
-
-## V2 enhancement: evidence and uncertainty
-
-The supplied summary is metadata only, not source code. Use only supplied facts. Do not invent runtime behavior, endpoints, modules, protocols, or source spans. For each component, cite only listed relative paths and provide confidence. Put every unsupported claim or missing detail in `unknowns`.
-
-## Output format
-
-Return JSON only, matching this contract exactly:
-{"system_type":"string","architecture_patterns":["string"],"components":[{"name":"string","responsibility":"string","evidence_paths":["relative/path"],"confidence":0.0}],"relationships":["string"],"technology_stack":["string"],"security_considerations":["string"],"performance_considerations":["string"],"unknowns":["string"]}
-
-## V2 enhancement: bounded result
-
-Be comprehensive within the supplied summary, but concise. Do not return Markdown, prose before/after JSON, file contents, credentials, or hidden reasoning.
-"""
+    """Load the editable V6-derived prompt template from the tracked prompt tree."""
+    try:
+        return PROMPT_PATH.read_text(encoding="utf-8").strip() + "\n"
+    except OSError as exc:
+        raise RuntimeError(f"architecture discovery prompt unavailable: {PROMPT_PATH}") from exc
 
 
 def build_architecture_input(files: list[dict[str, Any]]) -> dict[str, Any]:
@@ -176,10 +172,19 @@ def deterministic_fallback(summary: dict[str, Any], reason: str) -> tuple[dict[s
             "system_type": "repository requiring architecture discovery",
             "architecture_patterns": (),
             "components": (),
-            "relationships": (),
-            "technology_stack": tuple(sorted(summary["languages"])),
+            "dependencies": (),
+            "data_flows": (),
+            "api_endpoints": (),
+            "design_patterns": (),
+            "technology_stack": {"languages": tuple(sorted(summary["languages"]))},
+            "frameworks": (),
+            "libraries": (),
+            "database_schema": (),
+            "security_architecture": (),
             "security_considerations": (),
             "performance_considerations": (),
+            "anti_patterns": (),
+            "architectural_smells": (),
             "unknowns": (reason, "deterministic fallback contains no inferred architecture"),
         },
         "fallback",
@@ -190,6 +195,10 @@ def _hash(value: object) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+
+
+def _hash_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
 def _stable_id(*values: str) -> str:

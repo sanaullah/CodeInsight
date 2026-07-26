@@ -103,6 +103,8 @@ class ArchitectureDiscovery(ContractModel):
     input_hash: str
     prompt_template: str
     prompt_version: int = Field(ge=1)
+    prompt_path: str
+    prompt_content_hash: str
     prompt_text: str = Field(min_length=1, max_length=80_000)
     result: dict[str, Any]
     result_hash: str

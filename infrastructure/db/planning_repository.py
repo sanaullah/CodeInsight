@@ -34,6 +34,8 @@ class SqlitePlanningRepository:
             discovery.input_hash,
             discovery.prompt_template,
             discovery.prompt_version,
+            discovery.prompt_path,
+            discovery.prompt_content_hash,
             discovery.prompt_text,
             _json(discovery.result),
             discovery.result_hash,
@@ -46,15 +48,16 @@ class SqlitePlanningRepository:
                 """
                 INSERT OR IGNORE INTO architecture_discoveries(
                     discovery_id, run_id, snapshot_id, input_hash,
-                    prompt_template, prompt_version, prompt_text, result_json,
-                    result_hash, status, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    prompt_template, prompt_version, prompt_path, prompt_content_hash,
+                    prompt_text, result_json, result_hash, status, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 values,
             )
             row = connection.execute(
                 """SELECT run_id, snapshot_id, input_hash, prompt_template,
-                          prompt_version, prompt_text, result_json, result_hash, status
+                          prompt_version, prompt_path, prompt_content_hash, prompt_text,
+                          result_json, result_hash, status
                    FROM architecture_discoveries WHERE discovery_id = ?""",
                 (discovery.discovery_id,),
             ).fetchone()
@@ -148,7 +151,8 @@ class SqlitePlanningRepository:
         with database_connection(self.ledger.database_path) as connection:
             rows = connection.execute(
                 """SELECT discovery_id, snapshot_id, input_hash, prompt_template,
-                          prompt_version, prompt_text, result_json, result_hash, status,
+                          prompt_version, prompt_path, prompt_content_hash, prompt_text,
+                          result_json, result_hash, status,
                           created_at
                    FROM architecture_discoveries WHERE run_id = ? ORDER BY created_at""",
                 (run_id,),
