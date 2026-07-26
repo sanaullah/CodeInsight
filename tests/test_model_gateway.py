@@ -25,6 +25,7 @@ from application.model_gateway import (
     ModelResponse,
     ModelUsage,
     OfflineModelGateway,
+    ProviderUnavailable,
     parse_json_object,
 )
 from application.tracing import TraceEvent
@@ -71,6 +72,20 @@ class CountingGateway:
             model=request.model,
             usage=ModelUsage(input_tokens=self.tokens),
         )
+
+
+class RecordingModelTracer:
+    def __init__(self) -> None:
+        self.records: list[tuple[ModelRequest, ModelResponse | None, object | None]] = []
+
+    def record_model_call(
+        self,
+        request: ModelRequest,
+        *,
+        response: ModelResponse | None = None,
+        error: object | None = None,
+    ) -> None:
+        self.records.append((request, response, error))
 
 
 @contextmanager
@@ -130,6 +145,43 @@ async def test_gateway_enforces_concurrency_and_run_token_budget() -> None:
     assert (await gateway.usage_for_run("run-1")).total_tokens == 4
     with pytest.raises(ModelBudgetExceeded, match="token budget"):
         await gateway.complete(_request())
+
+
+@pytest.mark.asyncio
+async def test_bounded_gateway_records_successful_provider_exchange() -> None:
+    tracer = RecordingModelTracer()
+    gateway = BoundedModelGateway(CountingGateway(), tracer=tracer)
+
+    response = await gateway.complete(_request())
+
+    assert len(tracer.records) == 1
+    request, traced_response, error = tracer.records[0]
+    assert request.user_prompt == "{}"
+    assert traced_response is response
+    assert error is None
+
+
+@pytest.mark.asyncio
+async def test_bounded_gateway_records_malformed_provider_content() -> None:
+    class MalformedGateway:
+        async def complete(self, _request: ModelRequest) -> ModelResponse:
+            raise ProviderUnavailable(
+                "provider_protocol_error category=invalid_content_json",
+                category="invalid_content_json",
+                response_content="not valid JSON",
+            )
+
+    tracer = RecordingModelTracer()
+    gateway = BoundedModelGateway(MalformedGateway(), tracer=tracer)
+
+    with pytest.raises(ProviderUnavailable, match="invalid_content_json"):
+        await gateway.complete(_request())
+
+    assert len(tracer.records) == 1
+    _request_value, response, error = tracer.records[0]
+    assert response is None
+    assert error is not None
+    assert error.response_content == "not valid JSON"
 
 
 @pytest.mark.asyncio
@@ -272,10 +324,13 @@ async def test_openai_compatible_gateway_classifies_bad_responses(
             return body
 
     monkeypatch.setattr("urllib.request.urlopen", lambda *_args, **_kwargs: Response())
-    with pytest.raises(RuntimeError, match=message):
+    with pytest.raises(ProviderUnavailable, match=message) as raised:
         await OpenAICompatibleGateway(base_url="http://localhost/v1").complete(
             _request()
         )
+    assert raised.value.response_content
+    if message == "invalid_envelope_json":
+        assert raised.value.response_content == "not-json"
 
 
 @pytest.mark.asyncio
@@ -461,6 +516,7 @@ def test_api_settings_make_provider_and_langfuse_explicit(
     monkeypatch.setenv("CODEINSIGHT_DEFAULT_MODEL", "local-fixture")
     monkeypatch.setenv("CODEINSIGHT_LANGFUSE_ENABLED", "true")
     monkeypatch.setenv("CODEINSIGHT_LANGFUSE_CAPTURE_PROMPTS", "true")
+    monkeypatch.delenv("CODEINSIGHT_LANGFUSE_CAPTURE_COMPLETIONS", raising=False)
     settings = ApiSettings.from_environment()
     assert settings.model_base_url == "http://127.0.0.1:1234/v1"
     assert settings.default_model == "local-fixture"
@@ -577,6 +633,62 @@ def test_langfuse_capture_controls_are_independent_and_recursive() -> None:
             "project_path": "[omitted]",
         },
     }
+
+
+def test_langfuse_records_failed_provider_exchange_with_capture_controls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    generations: list[dict[str, Any]] = []
+
+    class FakeGeneration:
+        def end(self) -> None:
+            return None
+
+    class FakeLangfuse:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def start_observation(self, **kwargs: Any) -> FakeGeneration:
+            generations.append(kwargs)
+            return FakeGeneration()
+
+        def flush(self) -> None:
+            return None
+
+    monkeypatch.setitem(
+        sys.modules, "langfuse", types.SimpleNamespace(Langfuse=FakeLangfuse)
+    )
+    exporter = LangfuseTraceExporter(
+        public_key="public",
+        secret_key="secret",
+        host="http://localhost:3000",
+        capture_prompts=True,
+        capture_completions=True,
+    )
+    request = _request()
+    error = ProviderUnavailable(
+        "provider_protocol_error category=invalid_content_json",
+        category="invalid_content_json",
+        response_content="this is not valid JSON",
+    )
+    exporter._record_model_call_safely(
+        request,
+        {"system_prompt": request.system_prompt, "user_prompt": request.user_prompt},
+        {"model_completion": error.response_content},
+        {"status": "failed", "error_category": error.category},
+        None,
+        str(error),
+    )
+    exporter.close()
+
+    assert len(generations) == 1
+    generation = generations[0]
+    assert generation["as_type"] == "generation"
+    assert generation["name"] == "provider_model_call"
+    assert generation["input"]["system_prompt"] == "system"
+    assert generation["output"]["model_completion"] == "this is not valid JSON"
+    assert generation["metadata"]["error_category"] == "invalid_content_json"
+    assert generation["level"] == "ERROR"
 
 
 def test_langfuse_queue_is_bounded_and_emit_after_close_is_noop(

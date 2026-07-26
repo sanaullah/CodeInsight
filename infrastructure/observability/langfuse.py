@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from threading import BoundedSemaphore, Lock
 from typing import Any
 
+from application.model_gateway import ModelRequest, ModelResponse, ProviderUnavailable
 from application.tracing import TraceEvent
 
 logger = logging.getLogger(__name__)
@@ -79,6 +80,107 @@ class LangfuseTraceExporter:
                 self._dropped_events += 1
                 return
             future.add_done_callback(lambda _future: self._slots.release())
+
+    def record_model_call(
+        self,
+        request: ModelRequest,
+        *,
+        response: ModelResponse | None = None,
+        error: ProviderUnavailable | None = None,
+    ) -> None:
+        """Capture every provider exchange, including malformed completions."""
+
+        with self._lock:
+            if self._client is None or self._closed:
+                return
+            if not self._slots.acquire(blocking=False):
+                self._dropped_events += 1
+                return
+            input_payload = _redact(
+                {
+                    "system_prompt": request.system_prompt,
+                    "user_prompt": request.user_prompt,
+                    "response_schema": request.response_schema,
+                },
+                capture_prompts=self.capture_prompts,
+                capture_completions=self.capture_completions,
+            )
+            raw_output: Any = (
+                response.content
+                if response is not None
+                else error.response_content if error is not None else None
+            )
+            output_payload = _redact(
+                {"model_completion": raw_output},
+                capture_prompts=self.capture_prompts,
+                capture_completions=self.capture_completions,
+            )
+            metadata = {
+                **request.correlation,
+                "run_id": request.run_id,
+                "wave_id": request.wave_id,
+                "task_id": request.task_id,
+                "status": "succeeded" if response is not None else "failed",
+                "error_category": error.category if error is not None else None,
+                "http_status": error.http_status if error is not None else None,
+            }
+            usage = response.usage if response is not None else error.usage if error else None
+            try:
+                future = self._pool.submit(
+                    self._record_model_call_safely,
+                    request,
+                    input_payload,
+                    output_payload,
+                    metadata,
+                    usage,
+                    str(error) if error is not None else None,
+                )
+            except RuntimeError:
+                self._slots.release()
+                self._dropped_events += 1
+                return
+            future.add_done_callback(lambda _future: self._slots.release())
+
+    def _record_model_call_safely(
+        self,
+        request: ModelRequest,
+        input_payload: dict[str, Any],
+        output_payload: dict[str, Any],
+        metadata: dict[str, Any],
+        usage: Any,
+        status_message: str | None,
+    ) -> None:
+        try:
+            generation = self._client.start_observation(
+                trace_context={"trace_id": _trace_id(request.run_id)},
+                name="provider_model_call",
+                as_type="generation",
+                input=input_payload,
+                output=output_payload,
+                metadata=metadata,
+                model=request.model,
+                model_parameters={
+                    "max_output_tokens": request.max_output_tokens,
+                    "timeout_seconds": request.timeout_seconds,
+                },
+                usage_details=(
+                    {
+                        "input": usage.input_tokens,
+                        "output": usage.output_tokens,
+                        "total": usage.total_tokens,
+                    }
+                    if usage is not None
+                    else None
+                ),
+                level="ERROR" if status_message else "DEFAULT",
+                status_message=status_message,
+            )
+            generation.end()
+        except Exception as exc:
+            logger.debug(
+                "Langfuse generation export failed: category=send class=%s",
+                type(exc).__name__,
+            )
 
     def _emit_safely(
         self, event: TraceEvent, safe_attributes: dict[str, Any]
@@ -164,7 +266,6 @@ def _redact_value(
             "file_content",
             "source_body",
             "tool_output",
-            "user_prompt",
         )
     ):
         return "[omitted]"

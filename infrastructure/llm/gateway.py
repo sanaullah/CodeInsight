@@ -98,11 +98,6 @@ class OpenAICompatibleGateway(ModelGateway):
                 )
             else:
                 raise self._http_error(exc) from exc
-        except json.JSONDecodeError as exc:
-            raise ProviderUnavailable(
-                "provider_protocol_error category=invalid_envelope_json",
-                category="invalid_envelope_json",
-            ) from exc
         except (OSError, urllib.error.URLError) as exc:
             raise ProviderUnavailable(
                 "provider_transport_error category=connection",
@@ -128,11 +123,20 @@ class OpenAICompatibleGateway(ModelGateway):
         with urllib.request.urlopen(  # noqa: S310 - configured provider URL
             http_request, timeout=timeout
         ) as response:
-            body = json.loads(response.read())
+            raw_body = response.read()
+        try:
+            body = json.loads(raw_body)
+        except json.JSONDecodeError as exc:
+            raise ProviderUnavailable(
+                "provider_protocol_error category=invalid_envelope_json",
+                category="invalid_envelope_json",
+                response_content=_response_text(raw_body),
+            ) from exc
         if not isinstance(body, dict):
             raise ProviderUnavailable(
                 "provider_protocol_error category=invalid_envelope_shape",
                 category="invalid_envelope_shape",
+                response_content=_json_text(body),
             )
         return body
 
@@ -143,11 +147,6 @@ class OpenAICompatibleGateway(ModelGateway):
             return self._post(payload, timeout_seconds)
         except urllib.error.HTTPError as exc:
             raise self._http_error(exc) from exc
-        except json.JSONDecodeError as exc:
-            raise ProviderUnavailable(
-                "provider_protocol_error category=invalid_envelope_json",
-                category="invalid_envelope_json",
-            ) from exc
         except (OSError, urllib.error.URLError) as exc:
             raise ProviderUnavailable(
                 "provider_transport_error category=connection",
@@ -156,10 +155,15 @@ class OpenAICompatibleGateway(ModelGateway):
 
     @staticmethod
     def _http_error(exc: urllib.error.HTTPError) -> ProviderUnavailable:
+        try:
+            response_content = _response_text(exc.read())
+        except OSError:
+            response_content = None
         return ProviderUnavailable(
             f"provider_http_error status={exc.code}",
             category="http_error",
             http_status=exc.code,
+            response_content=response_content,
         )
 
     @staticmethod
@@ -172,17 +176,19 @@ class OpenAICompatibleGateway(ModelGateway):
                 raise ProviderUnavailable(
                     "provider_protocol_error category=invalid_content_type",
                     category="invalid_content_type",
+                    response_content=_json_text(body),
                 )
             usage = body.get("usage", {})
+            mapped_usage = ModelUsage(
+                input_tokens=int(usage.get("prompt_tokens", 0)),
+                output_tokens=int(usage.get("completion_tokens", 0)),
+                cost_usd=float(usage.get("cost", 0) or 0),
+            )
             return ModelResponse(
                 content=parse_json_object(content),
                 provider="openai-compatible",
                 model=str(body.get("model") or request.model),
-                usage=ModelUsage(
-                    input_tokens=int(usage.get("prompt_tokens", 0)),
-                    output_tokens=int(usage.get("completion_tokens", 0)),
-                    cost_usd=float(usage.get("cost", 0) or 0),
-                ),
+                usage=mapped_usage,
                 provider_request_id=body.get("id"),
             )
         except ProviderUnavailable:
@@ -191,9 +197,20 @@ class OpenAICompatibleGateway(ModelGateway):
             raise ProviderUnavailable(
                 "provider_protocol_error category=invalid_response_shape",
                 category="invalid_response_shape",
+                response_content=_json_text(body),
             ) from exc
         except ValueError as exc:
             raise ProviderUnavailable(
                 "provider_protocol_error category=invalid_content_json",
                 category="invalid_content_json",
+                response_content=content,
+                usage=mapped_usage,
             ) from exc
+
+
+def _response_text(raw_body: bytes) -> str:
+    return raw_body.decode("utf-8", errors="replace")
+
+
+def _json_text(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, separators=(",", ","), default=str)

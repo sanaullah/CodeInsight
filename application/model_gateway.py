@@ -9,6 +9,8 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel
 
+from application.tracing import TraceExporter
+
 
 @dataclass(frozen=True, slots=True)
 class ModelUsage:
@@ -73,19 +75,27 @@ class ProviderUnavailable(RuntimeError):
         category: str = "provider_unavailable",
         http_status: int | None = None,
         usage: ModelUsage | None = None,
+        response_content: str | None = None,
         retryable: bool = True,
     ) -> None:
         super().__init__(message)
         self.category = category
         self.http_status = http_status
         self.usage = usage or ModelUsage()
+        self.response_content = response_content
         self.retryable = retryable
 
 
 class BoundedModelGateway:
     """Enforce provider concurrency and per-run token/cost budgets."""
 
-    def __init__(self, gateway: ModelGateway, *, max_concurrent: int = 2) -> None:
+    def __init__(
+        self,
+        gateway: ModelGateway,
+        *,
+        max_concurrent: int = 2,
+        tracer: TraceExporter | None = None,
+    ) -> None:
         if max_concurrent < 1:
             raise ValueError("max_concurrent must be greater than zero")
         self.gateway = gateway
@@ -94,6 +104,7 @@ class BoundedModelGateway:
         self._usage: dict[str, ModelUsage] = {}
         self._limits: dict[str, tuple[int, float]] = {}
         self._lock = asyncio.Lock()
+        self._tracer = tracer
 
     async def configure_run_budget(
         self, run_id: str, *, max_tokens: int, max_cost_usd: float
@@ -121,9 +132,22 @@ class BoundedModelGateway:
             except ProviderUnavailable as exc:
                 if exc.usage.total_tokens or exc.usage.cost_usd:
                     await self._commit_usage(request, exc.usage)
+                self._record_model_call(request, error=exc)
                 raise
         await self._commit_usage(request, response.usage)
+        self._record_model_call(request, response=response)
         return response
+
+    def _record_model_call(
+        self,
+        request: ModelRequest,
+        *,
+        response: ModelResponse | None = None,
+        error: ProviderUnavailable | None = None,
+    ) -> None:
+        record = getattr(self._tracer, "record_model_call", None)
+        if callable(record):
+            record(request, response=response, error=error)
 
     async def _commit_usage(
         self, request: ModelRequest, usage: ModelUsage

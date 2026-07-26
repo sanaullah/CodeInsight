@@ -293,6 +293,7 @@ class AnalysisService:
         bounded = BoundedModelGateway(
             provider,
             max_concurrent=self.settings.max_concurrent_model_calls,
+            tracer=self._get_tracer(),
         )
         self.executor = NativeAnalysisExecutor(
             ledger=self._get_ledger(),
