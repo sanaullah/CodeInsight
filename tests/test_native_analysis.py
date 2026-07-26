@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -240,6 +241,7 @@ def _coordinator(
     client: Any,
     *,
     max_concurrent: int = 4,
+    event_sink: Callable[[str, dict[str, Any]], None] | None = None,
 ) -> NativeAnalysisCoordinator:
     artifact_records = SqliteArtifactRepository(runtime.ledger)
     harness = TrustedSpecialistHarness(
@@ -261,6 +263,7 @@ def _coordinator(
         snapshots=runtime.snapshots,
         analysis=runtime.analysis,
         scheduler=scheduler,
+        event_sink=event_sink,
     )
 
 
@@ -482,6 +485,51 @@ async def test_native_analysis_executes_parallel_specialists_and_persists_result
                 "SELECT current_stage FROM runs WHERE run_id = 'run-1'"
             ).fetchone()["current_stage"]
             assert stage == "complete"
+    finally:
+        runtime.close()
+
+
+@pytest.mark.asyncio
+async def test_live_coordinator_emits_pydantic_graph_nodes_to_the_existing_event_sink(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    _create_run(runtime)
+    events: list[tuple[str, dict[str, Any]]] = []
+    coordinator = _coordinator(
+        runtime,
+        CompleteClient(),
+        event_sink=lambda event_type, data: events.append((event_type, data)),
+    )
+    try:
+        await coordinator.execute(
+            run_id="run-1",
+            snapshot=runtime.index.snapshot,
+            target_paths=runtime.index.target_paths,
+            mode=AnalysisMode.QUICK,
+            budget=RunBudget(max_specialists=1, max_tasks=1, max_waves=1),
+        )
+
+        graph_events = [
+            data
+            for event_type, data in events
+            if event_type == "review_graph_node_entered"
+        ]
+        assert [event["node"] for event in graph_events] == [
+            "plan_wave",
+            "dispatch_tasks",
+            "verify_evidence",
+            "deduplicate_and_correlate",
+            "assess_coverage",
+            "synthesize",
+            "complete",
+        ]
+        assert [event["transition_index"] for event in graph_events] == list(
+            range(1, len(graph_events) + 1)
+        )
+        assert all(event["run_id"] == "run-1" for event in graph_events)
+        assert all(event["graph_runtime"] == "pydantic-graph" for event in graph_events)
+        assert all(event["graph_name"] == "durable_review_orchestration" for event in graph_events)
     finally:
         runtime.close()
 

@@ -16,6 +16,7 @@ from analysis.native.pipeline import (
     correlate_and_persist,
 )
 from analysis.native.planning import RepositoryRolePlanner
+from analysis.native.review_graph import ReviewGraphTelemetry
 from analysis.native.role_generation import AiRoleProposalService, ProposedRole
 from domain.contracts import (
     AnalysisMode,
@@ -96,12 +97,17 @@ class NativeAnalysisCoordinator:
         if not self.analysis.acquire_coordinator_lease(run_id, owner=owner):
             raise RuntimeError("native analysis run is already coordinated")
         try:
+            graph_telemetry = ReviewGraphTelemetry(
+                run_id=run_id,
+                event_sink=self.event_sink,
+            )
             result = await self._execute_acquired(
                 run_id=run_id,
                 snapshot=snapshot,
                 target_paths=target_paths,
                 mode=mode,
                 budget=budget,
+                graph_telemetry=graph_telemetry,
             )
         except BaseException as exc:
             self.analysis.release_coordinator_lease(
@@ -119,6 +125,7 @@ class NativeAnalysisCoordinator:
         target_paths: tuple[str, ...],
         mode: AnalysisMode,
         budget: RunBudget,
+        graph_telemetry: ReviewGraphTelemetry,
     ) -> NativeAnalysisResult:
         if not self.analysis.bind_snapshot(run_id, snapshot.snapshot_id):
             raise ValueError("run is not active or is bound to another snapshot")
@@ -159,7 +166,7 @@ class NativeAnalysisCoordinator:
         while wave_number <= budget.max_waves and (
             resuming_wave_id is not None or total_tasks < budget.max_tasks
         ):
-            self._stage(run_id, RunStage.PLAN_WAVE)
+            self._stage(run_id, RunStage.PLAN_WAVE, graph_telemetry)
             ai_plan: WavePlan | None = None
             if self.architecture_discovery is not None and wave_number == 1 and next_plan is None:
                 discovery = await self.architecture_discovery.discover(
@@ -250,12 +257,12 @@ class NativeAnalysisCoordinator:
             else:
                 self._persist_plan(plan, wave_budget)
                 total_tasks += len(plan.tasks)
-            self._stage(run_id, RunStage.DISPATCH_TASKS)
+            self._stage(run_id, RunStage.DISPATCH_TASKS, graph_telemetry)
             await self.scheduler.run_until_idle(run_id=run_id)
-            self._stage(run_id, RunStage.VERIFY_EVIDENCE)
-            self._stage(run_id, RunStage.DEDUPLICATE_AND_CORRELATE)
+            self._stage(run_id, RunStage.VERIFY_EVIDENCE, graph_telemetry)
+            self._stage(run_id, RunStage.DEDUPLICATE_AND_CORRELATE, graph_telemetry)
             correlate_and_persist(self.analysis, run_id)
-            self._stage(run_id, RunStage.ASSESS_COVERAGE)
+            self._stage(run_id, RunStage.ASSESS_COVERAGE, graph_telemetry)
             task_records = self.analysis.task_records(run_id, plan.wave_id)
             failed_task_count += sum(record["status"] != "succeeded" for record in task_records)
             verdict_count, accepted_count = self.analysis.wave_verdict_counts(plan.wave_id)
@@ -293,7 +300,7 @@ class NativeAnalysisCoordinator:
                 and wave_number < budget.max_waves
                 and total_tasks < budget.max_tasks
             ):
-                self._stage(run_id, RunStage.PLAN_FOLLOW_UP_WAVE)
+                self._stage(run_id, RunStage.PLAN_FOLLOW_UP_WAVE, graph_telemetry)
                 follow_up_budget = budget.model_copy(
                     update={
                         "max_specialists": min(
@@ -333,9 +340,9 @@ class NativeAnalysisCoordinator:
                 break
             wave_number += 1
 
-        self._stage(run_id, RunStage.SYNTHESIZE)
+        self._stage(run_id, RunStage.SYNTHESIZE, graph_telemetry)
         findings = tuple(self.analysis.list_canonical_findings(run_id))
-        self._stage(run_id, RunStage.COMPLETE)
+        self._stage(run_id, RunStage.COMPLETE, graph_telemetry)
         return NativeAnalysisResult(
             findings=findings,
             coverage=tuple(coverage),
@@ -477,9 +484,15 @@ class NativeAnalysisCoordinator:
                 },
             )
 
-    def _stage(self, run_id: str, stage: RunStage) -> None:
+    def _stage(
+        self,
+        run_id: str,
+        stage: RunStage,
+        graph_telemetry: ReviewGraphTelemetry,
+    ) -> None:
         if not self.ledger.set_stage(run_id, stage):
             raise RuntimeError(f"run left active state before stage {stage.value}")
+        graph_telemetry.record_stage(stage)
         self.event_sink(
             "stage_changed",
             {"run_id": run_id, "stage": stage.value},
